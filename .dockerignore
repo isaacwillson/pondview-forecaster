@@ -1,0 +1,12 @@
+# Keep the build context tiny and, above all, keep resident job data out of the image.
+# Only api/ and models/ are actually COPYed by api/Dockerfile.
+.venv/
+.git/
+.gitignore
+data/
+notebooks/
+__pycache__/
+*.pyc
+.DS_Store
+README.md
+requirements.txt

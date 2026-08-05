@@ -1,0 +1,209 @@
+"""Train and honestly evaluate the hourly arrival-volume model.
+
+Two rules drive this file:
+
+1. Baseline before model. The baseline is mean arrivals by (hour, is_weekend),
+   fit on the training fold only. A gradient-boosted model that cannot beat a
+   lookup table of hourly averages is not worth deploying, so we always report
+   both side by side and let the numbers speak -- a tie is a real finding, not a
+   failure to tune away.
+
+2. Split by day, never by row. Hours from the same afternoon share weather and
+   crowd conditions, so a row-level split would leak. We use leave-one-day-out
+   CV grouped on date (one fold per observed day); the dataset is tiny, so this is
+   cheap and far more stable than 5-fold.
+
+Predicting FAMILY ARRIVALS PER HOUR -- not occupancy.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import joblib
+import numpy as np
+import pandas as pd
+import sklearn
+from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.metrics import mean_absolute_error
+
+DATA_PATH = Path("data/processed/hourly.csv")
+MODEL_PATH = Path("models/model.joblib")
+
+TARGET = "arrivals"
+NON_FEATURES = {"datetime", TARGET}
+BASELINE_KEYS = ["hour", "is_weekend"]
+
+# day_of_week stays in hourly.csv (it's useful for exploration) but is deliberately
+# NOT a model feature. The ablation (src/ablation.py) showed that a tree given
+# day_of_week overfits day-level noise at 19 days: calendar-only LOO MAE 4.08 is
+# actually WORSE than the 3.71 baseline lookup. Dropping it from the full model is a
+# small win on mean MAE (3.008 -> 2.976) and a clear one on fold-to-fold stability
+# (std 0.87 -> 0.75). What remains is exactly the baseline's (hour, is_weekend)
+# structure plus weather -- a model that's simple to defend.
+DROP_FROM_MODEL = {"day_of_week"}
+
+# Shallow on purpose: ~163 training rows per fold cannot support a deep model
+# without memorizing folds. These are deliberate, not grid-searched -- at this
+# sample size a hard search would just overfit the CV itself.
+MODEL_PARAMS = dict(
+    max_depth=3,
+    min_samples_leaf=10,
+    l2_regularization=1.0,
+    random_state=42,
+)
+
+
+def load_data() -> tuple[pd.DataFrame, list[str]]:
+    """Load the modeling table and derive the feature list from its columns."""
+    df = pd.read_csv(DATA_PATH, parse_dates=["datetime"])
+    df["date"] = df["datetime"].dt.normalize()
+    features = [
+        c for c in df.columns
+        if c not in NON_FEATURES and c not in DROP_FROM_MODEL and c != "date"
+    ]
+    return df, features
+
+
+def baseline_predict(train: pd.DataFrame, test: pd.DataFrame) -> np.ndarray:
+    """Predict each test hour with the train-fold mean for its (hour, is_weekend).
+
+    Fitting on the TRAIN fold only is the whole point -- using the test day's own
+    hours would leak. If a (hour, is_weekend) cell never appears in training (a
+    rare hour on a held-out day), fall back to the global train mean so we never
+    emit NaN.
+    """
+    cell_means = train.groupby(BASELINE_KEYS)[TARGET].mean()
+    global_mean = train[TARGET].mean()
+    keys = list(zip(test["hour"], test["is_weekend"]))
+    preds = np.array([cell_means.get(k, global_mean) for k in keys], dtype=float)
+    # Baseline means are already >= 0; clip anyway so both predictors obey the same
+    # "arrivals cannot be negative" contract.
+    return np.clip(preds, 0, None)
+
+
+def model_predict(train: pd.DataFrame, test: pd.DataFrame, features: list[str]) -> np.ndarray:
+    """Fit the gradient-boosted model on the train fold and predict the test day."""
+    model = HistGradientBoostingRegressor(**MODEL_PARAMS)
+    model.fit(train[features], train[TARGET])
+    # Negative arrivals are impossible; clip the regressor's output at zero.
+    return np.clip(model.predict(test[features]), 0, None)
+
+
+def run_loo_cv(df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
+    """Leave-one-day-out CV; return the table with out-of-fold predictions attached.
+
+    Each day is held out exactly once. We keep the per-row OOF predictions so error
+    can later be sliced by segment (weekend, temperature) on genuinely held-out data.
+    """
+    out = df.copy()
+    out["pred_baseline"] = np.nan
+    out["pred_model"] = np.nan
+
+    fold_mae_baseline: list[float] = []
+    fold_mae_model: list[float] = []
+
+    for day in sorted(df["date"].unique()):
+        test_mask = df["date"] == day
+        train, test = df[~test_mask], df[test_mask]
+
+        pred_b = baseline_predict(train, test)
+        pred_m = model_predict(train, test, features)
+
+        out.loc[test_mask, "pred_baseline"] = pred_b
+        out.loc[test_mask, "pred_model"] = pred_m
+
+        fold_mae_baseline.append(mean_absolute_error(test[TARGET], pred_b))
+        fold_mae_model.append(mean_absolute_error(test[TARGET], pred_m))
+
+    out.attrs["fold_mae_baseline"] = np.array(fold_mae_baseline)
+    out.attrs["fold_mae_model"] = np.array(fold_mae_model)
+    return out
+
+
+def report_headline(out: pd.DataFrame) -> None:
+    """Print the baseline and model MAE side by side -- baseline first."""
+    mb = out.attrs["fold_mae_baseline"]
+    mm = out.attrs["fold_mae_model"]
+    improvement = (mb.mean() - mm.mean()) / mb.mean() * 100
+
+    print("=" * 60)
+    print(f"Leave-one-day-out CV  ({len(mb)} folds, grouped on date)")
+    print("MAE = mean absolute error in family arrivals / hour")
+    print("-" * 60)
+    print(f"  baseline (hour x is_weekend):  {mb.mean():.3f}  +/- {mb.std():.3f}")
+    print(f"  model    (HistGradientBoost):  {mm.mean():.3f}  +/- {mm.std():.3f}")
+    print(f"  improvement over baseline:     {improvement:+.1f}%")
+    print("=" * 60)
+
+
+def report_segments(out: pd.DataFrame) -> None:
+    """Slice out-of-fold error by weekend and by temperature bucket.
+
+    Segment MAE is computed by pooling out-of-fold predictions (per-fold slices
+    would be too small to read), then comparing baseline vs model within each slice.
+    """
+    err_b = (out[TARGET] - out["pred_baseline"]).abs()
+    err_m = (out[TARGET] - out["pred_model"]).abs()
+
+    seg = out.copy()
+    seg["abs_err_baseline"] = err_b
+    seg["abs_err_model"] = err_m
+    seg["temp_bucket"] = pd.qcut(
+        seg["temperature_2m"], 3, labels=["cool", "mild", "warm"]
+    )
+
+    def block(title: str, group_col: str) -> tuple[str, float]:
+        print(f"\n{title}")
+        print(f"  {'segment':<16}{'n':>5}{'baseline':>11}{'model':>9}{'delta':>9}")
+        best_label, best_delta = "", -np.inf
+        grouped = seg.groupby(group_col, observed=True)
+        for label, g in grouped:
+            b, m = g["abs_err_baseline"].mean(), g["abs_err_model"].mean()
+            delta = b - m  # positive = model better
+            name = {0: "weekday", 1: "weekend"}.get(label, str(label))
+            print(f"  {name:<16}{len(g):>5}{b:>11.3f}{m:>9.3f}{delta:>+9.3f}")
+            if delta > best_delta:
+                best_delta, best_label = delta, name
+        return best_label, best_delta
+
+    wknd_best = block("By weekend/weekday:", "is_weekend")
+    temp_best = block("By temperature bucket:", "temp_bucket")
+
+    # One-sentence read on where the model earns its keep most.
+    overall_best = max([wknd_best, temp_best], key=lambda x: x[1])
+    if overall_best[1] <= 0:
+        print(
+            "\nThe model does not beat the baseline in any segment -- the time-only "
+            "lookup is hard to improve on in this window."
+        )
+    else:
+        print(
+            f"\nThe model beats the baseline most on {overall_best[0]} hours "
+            f"(MAE lower by {overall_best[1]:.2f} arrivals/hour)."
+        )
+
+
+def save_final_model(df: pd.DataFrame, features: list[str]) -> None:
+    """Refit on all rows and persist model + feature order for the API to reuse."""
+    model = HistGradientBoostingRegressor(**MODEL_PARAMS)
+    model.fit(df[features], df[TARGET])
+    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump({"model": model, "features": features}, MODEL_PATH)
+    print(f"\nSaved final model -> {MODEL_PATH}")
+    print(f"  features ({len(features)}): {features}")
+    # The API must pin this exact version: a scikit-learn mismatch can silently
+    # change or refuse to load a pickled estimator.
+    print(f"  trained with scikit-learn {sklearn.__version__}")
+
+
+def main() -> None:
+    df, features = load_data()
+    out = run_loo_cv(df, features)
+    report_headline(out)      # baseline + model, before anything else
+    report_segments(out)
+    save_final_model(df, features)
+
+
+if __name__ == "__main__":
+    main()
