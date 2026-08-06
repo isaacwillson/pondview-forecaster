@@ -111,6 +111,20 @@ def fetch_forecast_weather(day: date) -> pd.DataFrame:
     return frame
 
 
+@app.get("/")
+def root() -> dict:
+    """Landing payload so the base URL is self-describing instead of a bare 404."""
+    return {
+        "service": "Pondview Pool arrival forecaster",
+        "unit": UNIT,
+        "endpoints": {
+            "/forecast?day=YYYY-MM-DD": "hourly family-arrival forecast for a day",
+            "/health": "service status + the model's feature contract",
+            "/docs": "interactive API documentation",
+        },
+    }
+
+
 @app.get("/health")
 def health() -> dict:
     """Liveness check that also reports what the loaded model expects."""

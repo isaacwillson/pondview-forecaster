@@ -1,24 +1,29 @@
-certifi==2026.7.22
-charset-normalizer==3.4.9
-contourpy==1.3.3
-cycler==0.12.1
-fonttools==4.63.0
-holidays==0.102
-idna==3.18
+# Canonical development environment: Python 3.11 (matches the AWS Lambda base image).
+# Create it with:
+#   py -3.11 -m venv .venv311
+#   .venv311\Scripts\python -m pip install -r requirements.txt
+#
+# The modeling stack is pinned identically to api/requirements.txt, so training
+# locally (python src/train.py) reproduces the exact model that gets deployed. Those
+# versions are the newest that ship glibc-2.17 (manylinux2014) wheels, which the
+# Amazon-Linux-2 Lambda base can install -- see api/requirements.txt for the full why.
+
+# --- data + modeling (keep in lockstep with api/requirements.txt) ---
+numpy==2.2.6
+scipy==1.16.3
+pandas==2.3.2
+scikit-learn==1.7.2
 joblib==1.5.3
-kiwisolver==1.5.0
-matplotlib==3.11.1
-narwhals==2.24.0
-numpy==2.5.1
-packaging==26.2
-pandas==3.0.5
-pillow==12.3.0
-pyparsing==3.3.2
-python-dateutil==2.9.0.post0
+
+# --- weather fetch (src/fetch_weather.py) ---
 requests==2.34.2
-scikit-learn==1.9.0
-scipy==1.18.0
-six==1.17.0
-threadpoolctl==3.6.0
-tzdata==2026.3
-urllib3==2.7.0
+
+# --- exploration notebook (notebooks/explore.ipynb) ---
+matplotlib==3.11.1
+jupyterlab==4.6.2
+ipykernel==7.3.0
+
+# --- local API serving (the lean deployed subset is api/requirements.txt) ---
+fastapi==0.141.1
+uvicorn==0.52.1
+mangum==0.21.0
