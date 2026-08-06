@@ -1,0 +1,19 @@
+# Runtime dependencies for the Lambda container (api/Dockerfile), Python 3.11.
+#
+# The AWS python:3.11 base image is Amazon Linux 2 (glibc 2.26). These are the newest
+# versions of the scientific stack that still publish glibc-2.17 (manylinux2014)
+# wheels, so pip installs prebuilt binaries instead of trying -- and failing, with no
+# compiler in the image -- to build from source. They are ALSO the exact versions the
+# model was trained with (under Python 3.11), so the pickle loads with no version
+# mismatch. numpy/scipy/joblib are pinned alongside scikit-learn because they all
+# participate in that pickle.
+scikit-learn==1.7.2
+numpy==2.2.6
+scipy==1.16.3
+joblib==1.5.3
+pandas==2.3.2
+
+# Web layer + Lambda adapter.
+fastapi==0.141.1
+mangum==0.21.0
+requests==2.34.2

@@ -1,0 +1,29 @@
+# Canonical development environment: Python 3.11 (matches the AWS Lambda base image).
+# Create it with:
+#   py -3.11 -m venv .venv311
+#   .venv311\Scripts\python -m pip install -r requirements.txt
+#
+# The modeling stack is pinned identically to api/requirements.txt, so training
+# locally (python src/train.py) reproduces the exact model that gets deployed. Those
+# versions are the newest that ship glibc-2.17 (manylinux2014) wheels, which the
+# Amazon-Linux-2 Lambda base can install -- see api/requirements.txt for the full why.
+
+# --- data + modeling (keep in lockstep with api/requirements.txt) ---
+numpy==2.2.6
+scipy==1.16.3
+pandas==2.3.2
+scikit-learn==1.7.2
+joblib==1.5.3
+
+# --- weather fetch (src/fetch_weather.py) ---
+requests==2.34.2
+
+# --- exploration notebook (notebooks/explore.ipynb) ---
+matplotlib==3.11.1
+jupyterlab==4.6.2
+ipykernel==7.3.0
+
+# --- local API serving (the lean deployed subset is api/requirements.txt) ---
+fastapi==0.141.1
+uvicorn==0.52.1
+mangum==0.21.0
