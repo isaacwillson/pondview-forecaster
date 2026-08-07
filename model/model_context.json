@@ -1,0 +1,139 @@
+{
+  "baseline": {
+    "0": {
+      "10": {
+        "mean": 3.071,
+        "spread": 3.269
+      },
+      "11": {
+        "mean": 5.2,
+        "spread": 4.843
+      },
+      "12": {
+        "mean": 5.133,
+        "spread": 5.083
+      },
+      "13": {
+        "mean": 5.938,
+        "spread": 5.434
+      },
+      "14": {
+        "mean": 4.714,
+        "spread": 3.474
+      },
+      "15": {
+        "mean": 4.308,
+        "spread": 3.011
+      },
+      "16": {
+        "mean": 7.083,
+        "spread": 5.071
+      },
+      "17": {
+        "mean": 9.417,
+        "spread": 5.265
+      },
+      "18": {
+        "mean": 4.833,
+        "spread": 3.353
+      },
+      "19": {
+        "mean": 1.182,
+        "spread": 1.079
+      }
+    },
+    "1": {
+      "10": {
+        "mean": 6.667,
+        "spread": 4.676
+      },
+      "11": {
+        "mean": 11.25,
+        "spread": 9.177
+      },
+      "12": {
+        "mean": 8.286,
+        "spread": 7.319
+      },
+      "13": {
+        "mean": 10.286,
+        "spread": 6.676
+      },
+      "14": {
+        "mean": 8.286,
+        "spread": 3.592
+      },
+      "15": {
+        "mean": 8.857,
+        "spread": 4.22
+      },
+      "16": {
+        "mean": 7.286,
+        "spread": 3.352
+      },
+      "17": {
+        "mean": 6.6,
+        "spread": 2.702
+      },
+      "18": {
+        "mean": 3.2,
+        "spread": 0.837
+      },
+      "19": {
+        "mean": 0.5,
+        "spread": 1.0
+      }
+    }
+  },
+  "hour_residual": {
+    "10": 2.192,
+    "11": 4.133,
+    "12": 3.418,
+    "13": 3.034,
+    "14": 2.448,
+    "15": 2.824,
+    "16": 3.262,
+    "17": 4.796,
+    "18": 2.025,
+    "19": 1.281
+  },
+  "meta": {
+    "cv_baseline_mae": 4.238,
+    "cv_model_mae": 2.908,
+    "features": [
+      "hour",
+      "is_weekend",
+      "temperature_2m",
+      "precipitation",
+      "relative_humidity_2m",
+      "cloud_cover",
+      "wind_speed_10m"
+    ],
+    "n_days": 24,
+    "n_observations": 197,
+    "sklearn_version": "1.7.2"
+  },
+  "seasonal_means": {
+    "cloud_cover": 40.792,
+    "relative_humidity_2m": 60.782,
+    "wind_speed_10m": 11.087
+  },
+  "temp_range": {
+    "max": 90.2,
+    "min": 67.0
+  },
+  "whatif_conditions": {
+    "dry": {
+      "cloud_cover": 36.069,
+      "precipitation": 0.0,
+      "relative_humidity_2m": 58.305,
+      "wind_speed_10m": 10.493
+    },
+    "wet": {
+      "cloud_cover": 76.522,
+      "precipitation": 0.033,
+      "relative_humidity_2m": 79.522,
+      "wind_speed_10m": 15.587
+    }
+  }
+}
