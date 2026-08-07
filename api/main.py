@@ -91,7 +91,9 @@ app = FastAPI(
 # GET for /forecast, POST for /whatif; the browser origins come from ALLOWED_ORIGINS.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins="https://pondview-forecast.vercel.app",
+    # MUST be a LIST of full origins (scheme + host). A bare string is iterated
+    # character-by-character by Starlette and matches nothing -> CORS silently blocks.
+    allow_origins=["https://pondview-forecast.vercel.app", "http://localhost:3000"],
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
