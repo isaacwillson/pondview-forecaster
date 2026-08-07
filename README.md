@@ -10,11 +10,11 @@ Next.js app on Vercel.
 
 Forecast view (live page):
 
-docs/Screenshot 2026-08-07 111455.png
+<img src="docs/Screenshot 2026-08-07 111455.png"/>
 
 What-if view:
 
-docs/what-if-g.gif
+<img src="docs/what-if-g.gif"/>
 
 FastAPI interactive docs (`/docs`):
 
