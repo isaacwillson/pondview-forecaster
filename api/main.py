@@ -32,10 +32,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 from pydantic import BaseModel
 
-app.add_middleware(CORSMiddleware,
-    allow_origins=["https://pondview-forecast.vercel.app"],
-    allow_methods=["GET", "POST"], allow_headers=["*"])
-
 # --- Site + service configuration ---
 LATITUDE = 40.91822
 LONGITUDE = -74.59974
