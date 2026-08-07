@@ -10,11 +10,11 @@ Next.js app on Vercel.
 
 Forecast view (live page):
 
-![forecast view]([FILL: path])
+docs/Screenshot 2026-08-07 111455.png
 
 What-if view:
 
-![what-if view]([FILL: path])
+docs/what-if-g.gif
 
 FastAPI interactive docs (`/docs`):
 
