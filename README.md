@@ -18,10 +18,6 @@ What-if view:
   <img src="docs/what-if-g.gif"/>
 </div>
 
-FastAPI interactive docs (`/docs`):
-
-![FastAPI docs]([FILL: path])
-
 ## What it predicts — arrivals, not occupancy
 
 The target is **family arrivals per hour**: the number of sign-in lines recorded in each
