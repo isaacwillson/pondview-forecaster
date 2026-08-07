@@ -303,3 +303,4 @@ def whatif(req: WhatIfRequest) -> dict:
 
 
 # AWS Lambda entry point. API Gateway / Function URL -> Mangum -> this ASGI app.
+handler = Mangum(app)
