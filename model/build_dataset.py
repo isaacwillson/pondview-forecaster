@@ -21,12 +21,24 @@ from pathlib import Path
 
 import pandas as pd
 
-# Paths resolve relative to this file (model/), so the script runs from anywhere.
+# Paths resolve relative to this file (model/), so the script runs from anywhere. Prefer
+# the real resident data (gitignored -- maintainer's machine only); fall back to the
+# committed synthetic sample so anyone who clones the public repo can run the pipeline
+# end-to-end. A sample run writes hourly_sample.csv and reads its own bundled weather, so
+# it needs no network and never clobbers the committed real aggregate.
 _DATA = Path(__file__).resolve().parent / "data"
-SIGNINS_PATH = _DATA / "raw" / "signins.csv"
-DAY_LOG_PATH = _DATA / "raw" / "day_log.csv"
-WEATHER_PATH = _DATA / "interim" / "weather.csv"
-OUTPUT_PATH = _DATA / "processed" / "hourly.csv"
+if (_DATA / "raw" / "signins.csv").exists():
+    USING_SAMPLE = False
+    _SRC = _DATA / "raw"
+    WEATHER_PATH = _DATA / "interim" / "weather.csv"
+    OUTPUT_PATH = _DATA / "processed" / "hourly.csv"
+else:
+    USING_SAMPLE = True
+    _SRC = _DATA / "sample"
+    WEATHER_PATH = _DATA / "sample" / "weather.csv"
+    OUTPUT_PATH = _DATA / "processed" / "hourly_sample.csv"
+SIGNINS_PATH = _SRC / "signins.csv"
+DAY_LOG_PATH = _SRC / "day_log.csv"
 
 # Six weather variables arrive from fetch_weather.py. With only a couple hundred rows we
 # want 6-8 features total, so we prune near-duplicate predictors: two collinear features
@@ -129,6 +141,11 @@ def drop_redundant_weather(table: pd.DataFrame) -> tuple[pd.DataFrame, list[str]
 
 
 def main() -> None:
+    if USING_SAMPLE:
+        print(
+            "NOTE: real resident data not found -- building from the synthetic "
+            "model/data/sample/ (output -> hourly_sample.csv).\n"
+        )
     grid = build_grid()
     arrivals = count_arrivals()
     weather = pd.read_csv(WEATHER_PATH, parse_dates=["datetime"])

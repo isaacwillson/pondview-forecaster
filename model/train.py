@@ -44,7 +44,7 @@ TARGET = "arrivals"
 BASELINE_KEYS = ["hour", "is_weekend"]
 
 # The model's input columns. day_of_week is present in hourly.csv (it's useful for
-# exploration) but is deliberately excluded here: the ablation (src/ablation.py) shows
+# exploration) but is deliberately excluded here: the ablation (ablation.py) shows
 # a tree given day_of_week overfits day-level noise -- a calendar-only model that
 # includes it scores WORSE than the time-only baseline, and adding it to the full model
 # is a statistical wash (a paired test across folds cannot separate 7 from 8 features).

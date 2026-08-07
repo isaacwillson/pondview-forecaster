@@ -4,7 +4,7 @@
 #   .venv311\Scripts\python -m pip install -r requirements.txt
 #
 # The modeling stack is pinned identically to api/requirements.txt, so training
-# locally (python src/train.py) reproduces the exact model that gets deployed. Those
+# locally (python model/train.py) reproduces the exact model that gets deployed. Those
 # versions are the newest that ship glibc-2.17 (manylinux2014) wheels, which the
 # Amazon-Linux-2 Lambda base can install -- see api/requirements.txt for the full why.
 
@@ -15,10 +15,10 @@ pandas==2.3.2
 scikit-learn==1.7.2
 joblib==1.5.3
 
-# --- weather fetch (src/fetch_weather.py) ---
+# --- weather fetch (model/fetch_weather.py) ---
 requests==2.34.2
 
-# --- exploration notebook (notebooks/explore.ipynb) ---
+# --- findings notebook (model/notebooks/findings.ipynb) ---
 matplotlib==3.11.1
 jupyterlab==4.6.2
 ipykernel==7.3.0
