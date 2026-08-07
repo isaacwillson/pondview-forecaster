@@ -3,6 +3,16 @@
 __pycache__/
 *.pyc
 .env
-data/raw/*.csv
-data/interim/*.csv
 .DS_Store
+
+# Resident pool data -- real sign-in sheets and fetched weather never enter the repo.
+# Only the de-identified aggregate model/data/processed/hourly.csv and the synthetic
+# model/data/sample/ are committed.
+model/data/raw/*.csv
+model/data/interim/*.csv
+
+# Next.js frontend (web/, Phase 4)
+web/node_modules/
+web/.next/
+web/out/
+web/.env*.local

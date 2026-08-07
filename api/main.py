@@ -57,7 +57,7 @@ MAX_FORECAST_DAYS = 16
 # point at wherever the artifact is copied (see api/Dockerfile).
 MODEL_PATH = Path(
     os.environ.get(
-        "MODEL_PATH", Path(__file__).resolve().parent.parent / "models" / "model.joblib"
+        "MODEL_PATH", Path(__file__).resolve().parent.parent / "model" / "model.joblib"
     )
 )
 

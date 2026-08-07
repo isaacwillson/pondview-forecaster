@@ -46,7 +46,7 @@ HOURLY_VARIABLES = [
 # a silent, plausible-looking error that would poison the whole model.
 TIMEZONE = "America/New_York"
 
-OUTPUT_PATH = Path("data/interim/weather.csv")
+OUTPUT_PATH = Path(__file__).resolve().parent / "data" / "interim" / "weather.csv"
 
 # The three low-turnout days I want to eyeball before deciding whether to keep them.
 DAYS_TO_INSPECT = ["2026-07-09", "2026-07-29", "2026-08-02"]

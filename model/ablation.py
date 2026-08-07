@@ -17,11 +17,10 @@ Predicting FAMILY ARRIVALS PER HOUR -- not occupancy.
 from __future__ import annotations
 
 import numpy as np
-from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error
 
 # Reuse train.py's harness verbatim so the numbers here match its report exactly.
-from train import load_data, baseline_predict, MODEL_PARAMS, TARGET
+from train import load_data, baseline_predict, make_model, TARGET
 
 CALENDAR = ["hour", "day_of_week", "is_weekend"]
 WEATHER = [
@@ -36,7 +35,7 @@ def loo_model_mae(df, features: list[str]) -> np.ndarray:
     for day in sorted(df["date"].unique()):
         test_mask = df["date"] == day
         train, test = df[~test_mask], df[test_mask]
-        model = HistGradientBoostingRegressor(**MODEL_PARAMS)
+        model = make_model()
         model.fit(train[features], train[TARGET])
         pred = np.clip(model.predict(test[features]), 0, None)
         maes.append(mean_absolute_error(test[TARGET], pred))
@@ -54,7 +53,7 @@ def loo_baseline_mae(df) -> np.ndarray:
 
 
 def main() -> None:
-    df, _ = load_data()
+    df = load_data()
 
     configs = {
         "baseline: hour x is_weekend": loo_baseline_mae(df),

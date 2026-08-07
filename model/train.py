@@ -14,6 +14,9 @@ Two rules drive this file:
    cheap and far more stable than 5-fold.
 
 Predicting FAMILY ARRIVALS PER HOUR -- not occupancy.
+
+`FEATURES`, `make_model`, and `baseline_predict` are the public surface: train.py,
+ablation.py, and the findings notebook all import them so there is one source of truth.
 """
 
 from __future__ import annotations
@@ -27,25 +30,34 @@ import sklearn
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error
 
-DATA_PATH = Path("data/processed/hourly.csv")
-MODEL_PATH = Path("models/model.joblib")
+# Paths are resolved relative to this file (model/), so the script runs from anywhere.
+_HERE = Path(__file__).resolve().parent
+DATA_PATH = _HERE / "data" / "processed" / "hourly.csv"
+MODEL_PATH = _HERE / "model.joblib"
 
 TARGET = "arrivals"
-NON_FEATURES = {"datetime", TARGET}
 BASELINE_KEYS = ["hour", "is_weekend"]
 
-# day_of_week stays in hourly.csv (it's useful for exploration) but is deliberately
-# NOT a model feature. The ablation (src/ablation.py) showed that a tree given
-# day_of_week overfits day-level noise at 19 days: calendar-only LOO MAE 4.08 is
-# actually WORSE than the 3.71 baseline lookup. Dropping it from the full model is a
-# small win on mean MAE (3.008 -> 2.976) and a clear one on fold-to-fold stability
-# (std 0.87 -> 0.75). What remains is exactly the baseline's (hour, is_weekend)
-# structure plus weather -- a model that's simple to defend.
-DROP_FROM_MODEL = {"day_of_week"}
+# The model's input columns. day_of_week is present in hourly.csv (it's useful for
+# exploration) but is deliberately excluded here: the ablation (src/ablation.py) shows
+# a tree given day_of_week overfits day-level noise -- a calendar-only model that
+# includes it scores WORSE than the time-only baseline, and adding it to the full model
+# is a statistical wash (a paired test across folds cannot separate 7 from 8 features).
+# So we keep the simpler 7-feature model: the baseline's (hour, is_weekend) structure
+# plus weather.
+FEATURES = [
+    "hour",
+    "is_weekend",
+    "temperature_2m",
+    "precipitation",
+    "relative_humidity_2m",
+    "cloud_cover",
+    "wind_speed_10m",
+]
 
-# Shallow on purpose: ~163 training rows per fold cannot support a deep model
-# without memorizing folds. These are deliberate, not grid-searched -- at this
-# sample size a hard search would just overfit the CV itself.
+# Shallow on purpose: only ~190 training rows per fold cannot support a deep model
+# without memorizing folds. These are deliberate, not grid-searched -- at this sample
+# size a hard search would just overfit the CV itself.
 MODEL_PARAMS = dict(
     max_depth=3,
     min_samples_leaf=10,
@@ -54,15 +66,22 @@ MODEL_PARAMS = dict(
 )
 
 
-def load_data() -> tuple[pd.DataFrame, list[str]]:
-    """Load the modeling table and derive the feature list from its columns."""
+def make_model() -> HistGradientBoostingRegressor:
+    """Construct the (unfitted) model.
+
+    A single factory so training, cross-validation, and the notebook all build the
+    exact same estimator -- there is no second place to change a hyperparameter.
+    """
+    return HistGradientBoostingRegressor(**MODEL_PARAMS)
+
+
+def load_data() -> pd.DataFrame:
+    """Load the modeling table and add a normalized `date` column for grouping."""
     df = pd.read_csv(DATA_PATH, parse_dates=["datetime"])
     df["date"] = df["datetime"].dt.normalize()
-    features = [
-        c for c in df.columns
-        if c not in NON_FEATURES and c not in DROP_FROM_MODEL and c != "date"
-    ]
-    return df, features
+    missing = [f for f in FEATURES if f not in df.columns]
+    assert not missing, f"hourly.csv is missing model features: {missing}"
+    return df
 
 
 def baseline_predict(train: pd.DataFrame, test: pd.DataFrame) -> np.ndarray:
@@ -82,15 +101,17 @@ def baseline_predict(train: pd.DataFrame, test: pd.DataFrame) -> np.ndarray:
     return np.clip(preds, 0, None)
 
 
-def model_predict(train: pd.DataFrame, test: pd.DataFrame, features: list[str]) -> np.ndarray:
+def model_predict(
+    train: pd.DataFrame, test: pd.DataFrame, features: list[str] = FEATURES
+) -> np.ndarray:
     """Fit the gradient-boosted model on the train fold and predict the test day."""
-    model = HistGradientBoostingRegressor(**MODEL_PARAMS)
+    model = make_model()
     model.fit(train[features], train[TARGET])
     # Negative arrivals are impossible; clip the regressor's output at zero.
     return np.clip(model.predict(test[features]), 0, None)
 
 
-def run_loo_cv(df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
+def run_loo_cv(df: pd.DataFrame, features: list[str] = FEATURES) -> pd.DataFrame:
     """Leave-one-day-out CV; return the table with out-of-fold predictions attached.
 
     Each day is held out exactly once. We keep the per-row OOF predictions so error
@@ -184,9 +205,9 @@ def report_segments(out: pd.DataFrame) -> None:
         )
 
 
-def save_final_model(df: pd.DataFrame, features: list[str]) -> None:
+def save_final_model(df: pd.DataFrame, features: list[str] = FEATURES) -> None:
     """Refit on all rows and persist model + feature order for the API to reuse."""
-    model = HistGradientBoostingRegressor(**MODEL_PARAMS)
+    model = make_model()
     model.fit(df[features], df[TARGET])
     MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump({"model": model, "features": features}, MODEL_PATH)
@@ -198,11 +219,11 @@ def save_final_model(df: pd.DataFrame, features: list[str]) -> None:
 
 
 def main() -> None:
-    df, features = load_data()
-    out = run_loo_cv(df, features)
+    df = load_data()
+    out = run_loo_cv(df, FEATURES)
     report_headline(out)      # baseline + model, before anything else
     report_segments(out)
-    save_final_model(df, features)
+    save_final_model(df, FEATURES)
 
 
 if __name__ == "__main__":
