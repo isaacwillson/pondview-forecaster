@@ -17,13 +17,16 @@ FROM public.ecr.aws/lambda/python:3.11
 COPY api/requirements.txt ${LAMBDA_TASK_ROOT}/requirements.txt
 RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
 
-# Application code and the model artifact.
+# Application code, the model artifact, and its context sidecar (bands, "typical"
+# baseline, /whatif defaults).
 COPY api/main.py ${LAMBDA_TASK_ROOT}/main.py
 COPY model/model.joblib ${LAMBDA_TASK_ROOT}/model.joblib
+COPY model/model_context.json ${LAMBDA_TASK_ROOT}/model_context.json
 
-# main.py reads MODEL_PATH to locate the artifact inside the image (default is the
-# repo layout, which doesn't exist here). ${LAMBDA_TASK_ROOT} resolves to /var/task.
+# main.py reads these to locate the artifacts inside the image (the defaults point at
+# the repo layout, which doesn't exist here). ${LAMBDA_TASK_ROOT} resolves to /var/task.
 ENV MODEL_PATH=${LAMBDA_TASK_ROOT}/model.joblib
+ENV CONTEXT_PATH=${LAMBDA_TASK_ROOT}/model_context.json
 
 # Allowed CORS origins (comma-separated). main.py reads ALLOWED_ORIGINS; override at
 # deploy time (e.g. to add a staging URL) without rebuilding the image.
