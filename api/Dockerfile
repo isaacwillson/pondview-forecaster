@@ -29,8 +29,8 @@ ENV MODEL_PATH=${LAMBDA_TASK_ROOT}/model.joblib
 ENV CONTEXT_PATH=${LAMBDA_TASK_ROOT}/model_context.json
 
 # Allowed CORS origins (comma-separated). main.py reads ALLOWED_ORIGINS; override at
-# deploy time (e.g. to add a staging URL) without rebuilding the image.
-ENV ALLOWED_ORIGINS=https://pondviewpool.vercel.app
+# deploy time (e.g. to add a preview/staging URL) without rebuilding the image.
+ENV ALLOWED_ORIGINS=https://pondview-forecast.vercel.app
 
 # Handler = "<module>.<callable>": main.py's `handler = Mangum(app)`.
 CMD ["main.handler"]
