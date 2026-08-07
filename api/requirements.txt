@@ -13,7 +13,14 @@ scipy==1.16.3
 joblib==1.5.3
 pandas==2.3.2
 
-# Web layer + Lambda adapter.
+# Web layer + Lambda adapter. Pin starlette/pydantic (fastapi's transitive deps) too:
+# leaving them to float let the Linux image resolve a NEWER, incompatible Starlette than
+# the one tested locally, which crashed the container at import (app.add_middleware).
+# These are the exact versions verified working end-to-end.
 fastapi==0.141.1
+starlette==1.4.1
+pydantic==2.13.4
+pydantic-core==2.46.4
+anyio==4.14.2
 mangum==0.21.0
 requests==2.34.2
