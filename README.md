@@ -2,7 +2,7 @@
 
 Predicts how many families will arrive at a community pool in each open hour of a given
 day, from the day's weather — and lets you explore what the model learned. See the
-[live forecast page]([FILL: Vercel URL]). The model is a scikit-learn regressor served
+[live forecast page](https://pondviewforecast.vercel.app). The model is a scikit-learn regressor served
 from AWS Lambda (a container image) behind a small FastAPI service; the frontend is a
 Next.js app on Vercel.
 
