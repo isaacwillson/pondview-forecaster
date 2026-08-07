@@ -1,0 +1,69 @@
+# Build the API container image and update the Lambda function.
+#
+# Path filter: this runs ONLY when the backend changes (api/ or model/, since the image
+# bundles the trained model + sidecar). Frontend-only commits under web/ never trigger a
+# backend redeploy -- the frontend deploys separately (Vercel).
+#
+# Auth is OIDC (no long-lived AWS keys in the repo). Configure once in the repo settings:
+#   Secrets:   AWS_DEPLOY_ROLE_ARN   (an IAM role trusting GitHub's OIDC provider)
+#   Variables: AWS_REGION, ECR_REPOSITORY, LAMBDA_FUNCTION
+name: Deploy API
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "api/**"
+      - "model/model.joblib"
+      - "model/model_context.json"
+      - ".github/workflows/deploy-api.yml"
+  workflow_dispatch: {}
+
+# Only one deploy at a time; cancel an in-flight run if a newer commit lands.
+concurrency:
+  group: deploy-api
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # required for OIDC
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # linux/amd64 matches the Lambda function's x86_64 architecture.
+          docker build --platform linux/amd64 -f api/Dockerfile \
+            -t "$REGISTRY/$REPOSITORY:$IMAGE_TAG" \
+            -t "$REGISTRY/$REPOSITORY:latest" .
+          docker push "$REGISTRY/$REPOSITORY:$IMAGE_TAG"
+          docker push "$REGISTRY/$REPOSITORY:latest"
+
+      - name: Update Lambda to the new image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          aws lambda update-function-code \
+            --function-name "${{ vars.LAMBDA_FUNCTION }}" \
+            --image-uri "$REGISTRY/$REPOSITORY:$IMAGE_TAG"
+          aws lambda wait function-updated \
+            --function-name "${{ vars.LAMBDA_FUNCTION }}"

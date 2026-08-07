@@ -10,6 +10,8 @@ __pycache__/
 # model/data/sample/ are committed.
 model/data/raw/*.csv
 model/data/interim/*.csv
+# regenerable demo output of a `build_dataset.py` run on the synthetic sample
+model/data/processed/hourly_sample.csv
 
 # Next.js frontend (web/, Phase 4)
 web/node_modules/
