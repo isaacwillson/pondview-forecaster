@@ -1,10 +1,19 @@
-# Keep the build context tiny and, above all, keep resident job data out of the image.
-# Only api/ and models/ are actually COPYed by api/Dockerfile.
+# Keep the build context tiny and, above all, keep resident pool data out of the image.
+# The Dockerfile COPYs only api/ and model/model.joblib -- everything else is excluded.
 .venv/
+.venv311/
 .git/
 .gitignore
-data/
-notebooks/
+
+# model/ training pipeline, data, and notebooks are not needed at runtime (and model/data
+# holds the real resident sign-in data -- it must never enter the build context).
+model/data/
+model/notebooks/
+model/*.py
+
+# the frontend deploys separately (Vercel), never in the API image
+web/
+
 __pycache__/
 *.pyc
 .DS_Store

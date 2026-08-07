@@ -21,10 +21,12 @@ from pathlib import Path
 
 import pandas as pd
 
-SIGNINS_PATH = Path("data/raw/signins.csv")
-DAY_LOG_PATH = Path("data/raw/day_log.csv")
-WEATHER_PATH = Path("data/interim/weather.csv")
-OUTPUT_PATH = Path("data/processed/hourly.csv")
+# Paths resolve relative to this file (model/), so the script runs from anywhere.
+_DATA = Path(__file__).resolve().parent / "data"
+SIGNINS_PATH = _DATA / "raw" / "signins.csv"
+DAY_LOG_PATH = _DATA / "raw" / "day_log.csv"
+WEATHER_PATH = _DATA / "interim" / "weather.csv"
+OUTPUT_PATH = _DATA / "processed" / "hourly.csv"
 
 # Six weather variables arrive from fetch_weather.py. With only a couple hundred rows we
 # want 6-8 features total, so we prune near-duplicate predictors: two collinear features

@@ -1,7 +1,7 @@
 # Lambda container image for the Pondview arrival forecaster.
 #
 # The build context is the REPO ROOT (not api/), because the image needs both the
-# API code under api/ and the trained artifact under models/. Build with:
+# API code under api/ and the trained artifact under model/. Build with:
 #
 #   docker build --platform linux/amd64 -f api/Dockerfile -t pondview-forecast:latest .
 #
@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
 
 # Application code and the model artifact.
 COPY api/main.py ${LAMBDA_TASK_ROOT}/main.py
-COPY models/model.joblib ${LAMBDA_TASK_ROOT}/model.joblib
+COPY model/model.joblib ${LAMBDA_TASK_ROOT}/model.joblib
 
 # main.py reads MODEL_PATH to locate the artifact inside the image (default is the
 # repo layout, which doesn't exist here). ${LAMBDA_TASK_ROOT} resolves to /var/task.
