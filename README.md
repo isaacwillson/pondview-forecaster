@@ -14,7 +14,9 @@ Forecast view (live page):
 
 What-if view:
 
-<img src="docs/what-if-g.gif"/>
+<div>
+  <img src="docs/what-if-g.gif"/>
+</div>
 
 FastAPI interactive docs (`/docs`):
 
