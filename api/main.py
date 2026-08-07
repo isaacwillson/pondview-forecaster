@@ -91,7 +91,7 @@ app = FastAPI(
 # GET for /forecast, POST for /whatif; the browser origins come from ALLOWED_ORIGINS.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins="https://pondview-forecast.vercel.app",
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
@@ -301,4 +301,3 @@ def whatif(req: WhatIfRequest) -> dict:
 
 
 # AWS Lambda entry point. API Gateway / Function URL -> Mangum -> this ASGI app.
-handler = Mangum(app)
