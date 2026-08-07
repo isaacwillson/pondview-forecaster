@@ -91,7 +91,7 @@ app = FastAPI(
 # GET for /forecast, POST for /whatif; the browser origins come from ALLOWED_ORIGINS.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins="pondview-forecaster",
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
