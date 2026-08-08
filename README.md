@@ -38,8 +38,6 @@ paper sign-in sheets
   web/    Next.js on Vercel: Forecast + What-if views, calling the Lambda URL
 ```
 
-A diagram of the same flow lives at `docs/[FILL: path]` (architecture.png).
-
 ## The model (`model/`)
 
 **Data.** The training table covers **197 observed hours across 24 days**, from
