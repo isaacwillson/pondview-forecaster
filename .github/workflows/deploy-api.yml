@@ -11,7 +11,7 @@ name: Deploy API
 
 on:
   push:
-    branches: [master]
+    branches: [main]
     paths:
       - "api/**"
       - "model/model.joblib"
