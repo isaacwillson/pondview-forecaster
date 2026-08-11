@@ -1,30 +1,25 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Fraunces, IBM_Plex_Sans } from "next/font/google";
+import { Nunito } from "next/font/google";
 import "./globals.css";
 
-const display = Fraunces({
+// A friendly, rounded, highly legible typeface -- approachable for residents.
+const nunito = Nunito({
   subsets: ["latin"],
-  variable: "--font-display",
-  display: "swap",
-});
-
-const sans = IBM_Plex_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
   variable: "--font-sans",
+  weight: ["400", "500", "600", "700", "800"],
   display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Pondview pool — arrival forecast",
+  title: "Pondview Pool — how busy is it?",
   description:
-    "Hourly family-arrival forecasts for a community pool, from the day's weather. Arrivals, not occupancy.",
+    "See when Pondview Pool is quiet or busy, hour by hour, predicted from the day's weather.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${display.variable} ${sans.variable}`}>
+    <html lang="en" className={nunito.variable}>
       <body>{children}</body>
     </html>
   );

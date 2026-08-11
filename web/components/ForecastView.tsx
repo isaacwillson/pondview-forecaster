@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, getForecast } from "@/lib/api";
 import type { ForecastResponse, HourPrediction } from "@/lib/types";
-import { hourLabel, longDate, nextOpenDay } from "@/lib/format";
-import { ArrivalsChart } from "./ArrivalsChart";
-import { BasisBadge } from "./BasisBadge";
-import { ChartSkeleton } from "./ChartSkeleton";
+import { longDate, toISODate, upcomingDays, hour12 } from "@/lib/format";
+import { busyness } from "@/lib/busyness";
+import { DaySelector } from "./DaySelector";
+import { HourlyStrip } from "./HourlyStrip";
 
 type State =
   | { kind: "loading" }
@@ -14,16 +14,17 @@ type State =
   | { kind: "ready"; data: ForecastResponse };
 
 export function ForecastView() {
-  const [day, setDay] = useState<string>(() => nextOpenDay(new Date()));
+  const days = useMemo(() => upcomingDays(new Date(), 8), []);
+  const [selected, setSelected] = useState<string>(() => toISODate(new Date()));
   const [state, setState] = useState<State>({ kind: "loading" });
   const [slow, setSlow] = useState(false);
 
-  const load = useCallback((target: string) => {
+  const load = useCallback((iso: string) => {
     const controller = new AbortController();
     setState({ kind: "loading" });
     setSlow(false);
     const slowTimer = setTimeout(() => setSlow(true), 2500);
-    getForecast(target, controller.signal)
+    getForecast(iso, controller.signal)
       .then((data) => setState({ kind: "ready", data }))
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
@@ -39,109 +40,175 @@ export function ForecastView() {
     };
   }, []);
 
-  useEffect(() => load(day), [day, load]);
-
-  const ready = state.kind === "ready" ? state.data : null;
+  useEffect(() => load(selected), [selected, load]);
 
   return (
-    <div>
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <label className="flex flex-col gap-1 text-sm text-muted">
-          <span>Forecast for</span>
-          <input
-            type="date"
-            value={day}
-            onChange={(e) => setDay(e.target.value)}
-            className="w-[11rem] rounded-md border border-line bg-surface px-3 py-1.5 font-sans text-base text-ink"
-          />
-        </label>
-        {ready ? <BasisBadge basis={ready.basis} /> : null}
-      </div>
+    <div className="space-y-4">
+      <DaySelector days={days} selected={selected} onSelect={setSelected} />
 
-      <div className="mt-6 rounded-lg border border-line bg-surface p-5">
-        {state.kind === "loading" ? (
-          <ChartSkeleton
-            hint={
-              slow
-                ? "Waking the forecast service — the first request can take a few seconds."
-                : undefined
-            }
-          />
-        ) : state.kind === "error" ? (
-          <ErrorPanel message={state.message} onRetry={() => load(day)} />
-        ) : state.data.basis === "closed" ? (
-          <ClosedPanel data={state.data} />
-        ) : (
-          <ForecastReady data={state.data} />
-        )}
-      </div>
+      {state.kind === "loading" ? (
+        <LoadingCard slow={slow} />
+      ) : state.kind === "error" ? (
+        <ErrorCard message={state.message} onRetry={() => load(selected)} />
+      ) : state.data.basis === "closed" ? (
+        <ClosedCard day={state.data.day} message={state.data.message} />
+      ) : (
+        <ReadyCard data={state.data} />
+      )}
     </div>
   );
 }
 
-function ForecastReady({ data }: { data: ForecastResponse }) {
-  const predictions: HourPrediction[] = data.predictions ?? [];
-  const busiest = predictions.reduce<HourPrediction | null>(
+function ReadyCard({ data }: { data: ForecastResponse }) {
+  const preds: HourPrediction[] = data.predictions ?? [];
+  const peak = preds.reduce<HourPrediction | null>(
     (best, p) => (best === null || p.predicted > best.predicted ? p : best),
     null,
   );
-  const total = Math.round(predictions.reduce((s, p) => s + p.predicted, 0));
+  const quiet = preds.reduce<HourPrediction | null>(
+    (low, p) => (low === null || p.predicted < low.predicted ? p : low),
+    null,
+  );
+  const peakB = peak ? busyness(peak.predicted) : null;
 
   return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-baseline gap-x-8 gap-y-2">
-        <h2 className="font-display text-lg text-ink">{longDate(data.day)}</h2>
-        <dl className="flex gap-8 text-sm">
-          <div>
-            <dt className="text-muted">Busiest hour</dt>
-            <dd className="tnum font-medium text-ink">
-              {busiest ? `${hourLabel(busiest.hour)} · ${busiest.predicted.toFixed(1)}/hr` : "—"}
-            </dd>
+    <div className="space-y-4">
+      <section className="rounded-4xl bg-surface/80 p-6 shadow-soft backdrop-blur">
+        <div className="flex items-center justify-between">
+          <p className="font-bold text-ink">{longDate(data.day)}</p>
+          <BasisPill basis={data.basis} />
+        </div>
+
+        {peak && quiet ? (
+          <>
+            <p className="mt-4 text-sm font-semibold text-muted">Busiest time</p>
+            <div className="mt-1 flex flex-wrap items-end gap-x-3 gap-y-1">
+              <span
+                className="text-4xl font-extrabold leading-none"
+                style={{ color: peakB?.color }}
+              >
+                {peakB?.label}
+              </span>
+              <span className="pb-0.5 text-lg font-bold text-ink">
+                around {hour12(peak.hour)}
+              </span>
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <MiniStat label="Busiest" hour={peak.hour} value={peak.predicted} />
+              <MiniStat label="Quietest" hour={quiet.hour} value={quiet.predicted} />
+            </div>
+          </>
+        ) : (
+          <p className="mt-4 text-muted">No open hours to show for this day.</p>
+        )}
+      </section>
+
+      {preds.length > 0 ? (
+        <section className="rounded-4xl bg-surface/80 p-5 shadow-soft backdrop-blur">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-bold text-ink">Hour by hour</h2>
+            <span className="text-xs font-semibold text-muted">families arriving</span>
           </div>
-          <div>
-            <dt className="text-muted">Day total</dt>
-            <dd className="tnum font-medium text-ink">≈ {total}</dd>
-          </div>
-        </dl>
+          <HourlyStrip predictions={preds} />
+          <p className="mt-3 text-xs text-muted">
+            {data.basis === "typical"
+              ? "This far out we don’t have live weather yet, so this is a typical day like this one."
+              : "A rough guide from past summers and today’s weather — actual numbers vary."}
+          </p>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function MiniStat({ label, hour, value }: { label: string; hour: number; value: number }) {
+  const b = busyness(value);
+  return (
+    <div className="rounded-2xl p-3" style={{ background: b.soft }}>
+      <p className="text-xs font-semibold text-muted">{label}</p>
+      <p className="mt-0.5 text-lg font-extrabold text-ink">{hour12(hour)}</p>
+      <p className="text-sm font-bold" style={{ color: b.color }}>
+        {b.label} · ~{Math.round(value)}/hr
+      </p>
+    </div>
+  );
+}
+
+function BasisPill({ basis }: { basis: "forecast" | "typical" | "closed" }) {
+  const map = {
+    forecast: { text: "Live forecast", dot: "#4cb96a" },
+    typical: { text: "Typical day", dot: "#6ba8dd" },
+    closed: { text: "Closed", dot: "#98a7b0" },
+  } as const;
+  const { text, dot } = map[basis];
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-xs font-bold text-ink">
+      <span className="h-2 w-2 rounded-full" style={{ background: dot }} />
+      {text}
+    </span>
+  );
+}
+
+function ClosedCard({ day, message }: { day: string; message?: string }) {
+  return (
+    <section className="rounded-4xl bg-surface/80 p-8 text-center shadow-soft backdrop-blur">
+      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-surface-2 text-2xl">
+        🌙
       </div>
-      <ArrivalsChart
-        predictions={predictions}
-        ariaLabel={`Predicted family arrivals per hour for ${longDate(data.day)}.`}
-      />
-      <p className="mt-3 text-xs text-muted">
-        Bars are predicted family arrivals per hour; the soft band is the model&rsquo;s
-        typical cross-validation error.
+      <h2 className="text-xl font-extrabold text-ink">Closed for the season</h2>
+      <p className="mx-auto mt-2 max-w-xs text-muted">
+        {message ?? "The pool isn’t open on this date."} See you next summer!
       </p>
+      <p className="mt-3 text-sm text-muted">{longDate(day)}</p>
+    </section>
+  );
+}
+
+function LoadingCard({ slow }: { slow: boolean }) {
+  return (
+    <div className="space-y-4">
+      <section className="rounded-4xl bg-surface/60 p-6 shadow-soft">
+        <div className="h-4 w-40 animate-pulse rounded-full bg-surface-2" />
+        <div className="mt-4 h-9 w-52 animate-pulse rounded-full bg-surface-2" />
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <div className="h-20 animate-pulse rounded-2xl bg-surface-2" />
+          <div className="h-20 animate-pulse rounded-2xl bg-surface-2" />
+        </div>
+      </section>
+      <section className="rounded-4xl bg-surface/60 p-5 shadow-soft">
+        <div className="flex items-end gap-2">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div
+              key={i}
+              className="w-7 animate-pulse rounded-full bg-surface-2"
+              style={{ height: `${40 + ((i * 13) % 70)}px` }}
+            />
+          ))}
+        </div>
+        {slow ? (
+          <p className="mt-4 text-sm text-muted">Waking up the forecast — one moment…</p>
+        ) : null}
+      </section>
     </div>
   );
 }
 
-function ClosedPanel({ data }: { data: ForecastResponse }) {
+function ErrorCard({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="py-6">
-      <BasisBadge basis="closed" />
-      <p className="mt-4 max-w-[48ch] text-ink">
-        {data.message ?? "The pool is closed on this date."}
-      </p>
-      <p className="mt-2 text-sm text-muted">
-        Pick a date in season to see an hourly forecast.
-      </p>
-    </div>
-  );
-}
-
-function ErrorPanel({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <div className="py-6" role="alert">
-      <p className="font-medium text-ink">Couldn&rsquo;t load the forecast</p>
-      <p className="mt-1 max-w-[48ch] text-sm text-muted">{message}</p>
+    <section
+      className="rounded-4xl bg-surface/80 p-8 text-center shadow-soft backdrop-blur"
+      role="alert"
+    >
+      <h2 className="text-lg font-extrabold text-ink">Couldn’t load the forecast</h2>
+      <p className="mx-auto mt-1 max-w-xs text-sm text-muted">{message}</p>
       <button
         type="button"
         onClick={onRetry}
-        className="mt-4 rounded-md border border-line bg-paper px-3.5 py-1.5 text-sm font-medium text-ink hover:border-muted"
+        className="mt-4 rounded-full bg-ink px-5 py-2 text-sm font-bold text-surface"
       >
         Try again
       </button>
-    </div>
+    </section>
   );
 }

@@ -2,20 +2,19 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { ApiError, postWhatIf } from "@/lib/api";
-import type { TempRange, WhatIfResponse } from "@/lib/types";
-import { SegmentedControl } from "./SegmentedControl";
-import { TemperatureSlider } from "./TemperatureSlider";
-import { ArrivalsChart } from "./ArrivalsChart";
-import { ChartSkeleton } from "./ChartSkeleton";
+import type { HourPrediction, TempRange, WhatIfResponse } from "@/lib/types";
+import { busyness } from "@/lib/busyness";
+import { hour12 } from "@/lib/format";
+import { HourlyStrip } from "./HourlyStrip";
 
-const SLIDER_MIN = 55;
-const SLIDER_MAX = 100;
+const MIN = 55;
+const MAX = 100;
 const DEFAULT_TEMP = 82;
-const Y_FLOOR = 16; // keep the y-axis stable while dragging (expands if exceeded)
+const pct = (v: number) => ((v - MIN) / (MAX - MIN)) * 100;
 
 export function WhatIfView() {
   const [isWeekend, setIsWeekend] = useState(false);
-  const [temperature, setTemperature] = useState(DEFAULT_TEMP);
+  const [temp, setTemp] = useState(DEFAULT_TEMP);
   const [rain, setRain] = useState(false);
   const [data, setData] = useState<WhatIfResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -24,10 +23,9 @@ export function WhatIfView() {
   useEffect(() => {
     const controller = new AbortController();
     setPending(true);
-    // Debounce so dragging the slider doesn't fire a request per pixel.
     const timer = setTimeout(() => {
       postWhatIf(
-        { is_weekend: isWeekend, temperature, precipitation: rain },
+        { is_weekend: isWeekend, temperature: temp, precipitation: rain },
         controller.signal,
       )
         .then((d) => {
@@ -41,105 +39,133 @@ export function WhatIfView() {
         .finally(() => {
           if (!controller.signal.aborted) setPending(false);
         });
-    }, 220);
+    }, 200);
     return () => {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [isWeekend, temperature, rain]);
+  }, [isWeekend, temp, rain]);
 
   const observed: TempRange | null = data?.temp_range ?? null;
-  const extrapolating = observed
-    ? temperature < observed.min || temperature > observed.max
-    : false;
+  const extrapolating = observed ? temp < observed.min || temp > observed.max : false;
+  const peak = data
+    ? data.predictions.reduce<HourPrediction | null>(
+        (best, p) => (best === null || p.predicted > best.predicted ? p : best),
+        null,
+      )
+    : null;
+  const peakB = peak ? busyness(peak.predicted) : null;
 
   return (
-    <div className="grid gap-6 md:grid-cols-[minmax(0,17rem)_1fr]">
-      <div className="rounded-lg border border-line bg-surface p-5">
-        <h2 className="font-display text-lg text-ink">Conditions</h2>
-        <p className="mt-1 text-sm text-muted">
-          Change these to see what the model learned.
-        </p>
-        <div className="mt-5 space-y-5">
-          <Field label="Day">
-            <SegmentedControl
-              ariaLabel="Day type"
-              options={[
-                { value: "weekday", label: "Weekday" },
-                { value: "weekend", label: "Weekend" },
-              ]}
-              value={isWeekend ? "weekend" : "weekday"}
-              onChange={(v) => setIsWeekend(v === "weekend")}
-            />
-          </Field>
-          <TemperatureSlider
-            value={temperature}
-            onChange={setTemperature}
-            min={SLIDER_MIN}
-            max={SLIDER_MAX}
-            observed={observed}
-            extrapolating={extrapolating}
-          />
-          <Field label="Weather">
-            <SegmentedControl
-              ariaLabel="Weather"
-              options={[
-                { value: "dry", label: "Dry" },
-                { value: "rain", label: "Rain" },
-              ]}
-              value={rain ? "rain" : "dry"}
-              onChange={(v) => setRain(v === "rain")}
-            />
-          </Field>
-        </div>
-      </div>
+    <div className="space-y-4">
+      <section className="space-y-5 rounded-4xl bg-surface/80 p-6 shadow-soft backdrop-blur">
+        <p className="text-sm text-muted">See how the weather changes the crowd.</p>
 
-      <div className="rounded-lg border border-line bg-surface p-5">
-        {error ? (
-          <div role="alert" className="py-6">
-            <p className="font-medium text-ink">Couldn&rsquo;t reach the model</p>
-            <p className="mt-1 text-sm text-muted">{error}</p>
+        <Toggle label="Day" left="Weekday" right="Weekend" value={isWeekend} onChange={setIsWeekend} />
+
+        <div>
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm font-semibold text-muted">Temperature</span>
+            <span className="tnum text-2xl font-extrabold text-ink">{temp}&deg;</span>
           </div>
-        ) : !data ? (
-          <ChartSkeleton hint={pending ? "Waking the model service…" : undefined} />
-        ) : (
-          <div
-            aria-busy={pending}
-            className={pending ? "opacity-60 transition-opacity" : "transition-opacity"}
-          >
-            <div className="mb-3 flex items-baseline justify-between gap-4">
-              <h2 className="font-display text-lg text-ink">
-                Predicted hourly arrivals
-              </h2>
-              <span className="tnum text-sm text-muted">
-                day total &asymp;{" "}
-                {Math.round(data.predictions.reduce((s, p) => s + p.predicted, 0))}
-              </span>
-            </div>
-            <ArrivalsChart
-              predictions={data.predictions}
-              yMaxHint={Y_FLOOR}
-              ariaLabel={`Predicted arrivals per hour for a ${
-                isWeekend ? "weekend" : "weekday"
-              } at ${temperature} degrees Fahrenheit, ${rain ? "raining" : "dry"}.`}
+          <div className="relative mt-2 h-9">
+            <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-line" />
+            {observed ? (
+              <div
+                className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full"
+                style={{
+                  left: `${pct(observed.min)}%`,
+                  width: `${pct(observed.max) - pct(observed.min)}%`,
+                  background: "rgba(255,158,27,0.4)",
+                }}
+              />
+            ) : null}
+            <input
+              type="range"
+              min={MIN}
+              max={MAX}
+              value={temp}
+              onChange={(e) => setTemp(Number(e.target.value))}
+              aria-label="Temperature in Fahrenheit"
+              className="temp-range absolute inset-0"
             />
-            <p className="mt-3 max-w-[60ch] text-xs text-muted">
-              Rain on = the average conditions on rainy hours (higher humidity and cloud,
-              measurable precipitation) — which is how the model actually reads rain, and
-              it lowers turnout sharply.
+          </div>
+          <p className="mt-1 text-xs font-semibold text-muted">
+            {extrapolating
+              ? "That’s outside what we’ve actually seen — just a rough guess."
+              : "The shaded stretch is what past summers actually reached."}
+          </p>
+        </div>
+
+        <Toggle label="Weather" left="Dry" right="Rain" value={rain} onChange={setRain} />
+      </section>
+
+      <section className="rounded-4xl bg-surface/80 p-5 shadow-soft backdrop-blur">
+        {error ? (
+          <p className="py-6 text-center text-muted" role="alert">
+            {error}
+          </p>
+        ) : !data || !peak ? (
+          <p className="py-10 text-center text-muted">{pending ? "Working it out…" : ""}</p>
+        ) : (
+          <div className={pending ? "opacity-60 transition-opacity" : "transition-opacity"}>
+            <p className="text-sm font-semibold text-muted">
+              On a {rain ? "rainy" : "dry"} {isWeekend ? "weekend" : "weekday"} at {temp}&deg;
+            </p>
+            <p className="mt-1 text-2xl font-extrabold" style={{ color: peakB?.color }}>
+              {peakB?.label} around {hour12(peak.hour)}
+            </p>
+            <div className="mt-4">
+              <HourlyStrip predictions={data.predictions} />
+            </div>
+            <p className="mt-3 text-xs text-muted">
+              Notice: rain empties the pool, while warmer days fill it up.
             </p>
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Toggle({
+  label,
+  left,
+  right,
+  value,
+  onChange,
+}: {
+  label: string;
+  left: ReactNode;
+  right: ReactNode;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
   return (
     <div>
-      <div className="mb-1.5 text-sm text-muted">{label}</div>
-      {children}
+      <span className="text-sm font-semibold text-muted">{label}</span>
+      <div className="mt-1.5 grid grid-cols-2 gap-1.5 rounded-2xl bg-surface-2 p-1">
+        <button
+          type="button"
+          onClick={() => onChange(false)}
+          aria-pressed={!value}
+          className={`rounded-xl py-2 text-sm font-bold transition ${
+            !value ? "bg-surface text-ink shadow-soft" : "text-muted"
+          }`}
+        >
+          {left}
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange(true)}
+          aria-pressed={value}
+          className={`rounded-xl py-2 text-sm font-bold transition ${
+            value ? "bg-surface text-ink shadow-soft" : "text-muted"
+          }`}
+        >
+          {right}
+        </button>
+      </div>
     </div>
   );
 }

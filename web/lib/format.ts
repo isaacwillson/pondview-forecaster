@@ -19,14 +19,21 @@ export function nextOpenDay(from: Date): string {
   return toISODate(from);
 }
 
-/** 24h hour -> compact label, e.g. 10 -> "10a", 13 -> "1p", 19 -> "7p". */
-export function hourLabel(hour: number): string {
-  const period = hour < 12 ? "a" : "p";
-  const h12 = hour % 12 === 0 ? 12 : hour % 12;
-  return `${h12}${period}`;
+/** Friendly 12-hour label, e.g. 10 -> "10 AM", 13 -> "1 PM", 19 -> "7 PM". */
+export function hour12(hour: number): string {
+  const period = hour < 12 ? "AM" : "PM";
+  const h = hour % 12 === 0 ? 12 : hour % 12;
+  return `${h} ${period}`;
 }
 
-/** Long, human date, e.g. "Thursday, August 6". */
+/** Compact hour, e.g. 10 -> "10a", 17 -> "5p" (used where space is tight). */
+export function hourShort(hour: number): string {
+  const period = hour < 12 ? "a" : "p";
+  const h = hour % 12 === 0 ? 12 : hour % 12;
+  return `${h}${period}`;
+}
+
+/** Long, human date, e.g. "Saturday, August 8". */
 export function longDate(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
   if (!y || !m || !d) return iso;
@@ -35,4 +42,31 @@ export function longDate(iso: string): string {
     month: "long",
     day: "numeric",
   });
+}
+
+export interface DayOption {
+  iso: string;
+  label: string; // "Today", "Tomorrow", or weekday "Sat"
+  sub: string; // "Aug 8"
+}
+
+/** The next `count` calendar days from `from`, for the horizontal day picker. */
+export function upcomingDays(from: Date, count: number): DayOption[] {
+  const base = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  const out: DayOption[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const d = new Date(base);
+    d.setDate(base.getDate() + i);
+    out.push({
+      iso: toISODate(d),
+      label:
+        i === 0
+          ? "Today"
+          : i === 1
+            ? "Tomorrow"
+            : d.toLocaleDateString("en-US", { weekday: "short" }),
+      sub: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    });
+  }
+  return out;
 }

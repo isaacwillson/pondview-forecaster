@@ -1,26 +1,30 @@
 import type { Config } from "tailwindcss";
 
-// Colours are driven by CSS variables (see app/globals.css) so light/dark switch
-// cleanly. The single signature accent is used only for the prediction itself.
+// Colours are CSS-variable driven (app/globals.css) so light/dark switch cleanly.
+// Busyness colours live in lib/busyness.ts and are applied inline per hour.
 const config: Config = {
   content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        paper: "var(--paper)",
         surface: "var(--surface)",
+        "surface-2": "var(--surface-2)",
         ink: "var(--ink)",
         muted: "var(--muted)",
         line: "var(--line)",
-        accent: "var(--accent)",
-        "accent-ink": "var(--accent-ink)",
+        sun: "var(--sun)",
       },
       fontFamily: {
-        display: ["var(--font-display)", "Georgia", "serif"],
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
       },
+      boxShadow: {
+        soft: "var(--shadow)",
+      },
+      borderRadius: {
+        "4xl": "1.75rem",
+      },
       maxWidth: {
-        page: "60rem",
+        app: "30rem",
       },
     },
   },
