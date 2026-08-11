@@ -75,10 +75,7 @@ function ReadyCard({ data }: { data: ForecastResponse }) {
   return (
     <div className="space-y-4 lg:grid lg:grid-cols-12 lg:items-stretch lg:gap-6 lg:space-y-0">
       <section className="rounded-4xl bg-surface/80 p-6 shadow-soft backdrop-blur lg:col-span-4 lg:p-8">
-        <div className="flex items-center justify-between">
-          <p className="font-bold text-ink lg:text-lg">{longDate(data.day)}</p>
-          <BasisPill basis={data.basis} />
-        </div>
+        <p className="font-bold text-ink lg:text-lg">{longDate(data.day)}</p>
 
         {peak && quiet ? (
           <>
@@ -133,21 +130,6 @@ function MiniStat({ label, hour, value }: { label: string; hour: number; value: 
         {b.label} · ~{Math.round(value)}/hr
       </p>
     </div>
-  );
-}
-
-function BasisPill({ basis }: { basis: "forecast" | "typical" | "closed" }) {
-  const map = {
-    forecast: { text: "Live forecast", dot: "#4cb96a" },
-    typical: { text: "Typical day", dot: "#6ba8dd" },
-    closed: { text: "Closed", dot: "#98a7b0" },
-  } as const;
-  const { text, dot } = map[basis];
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-xs font-bold text-ink">
-      <span className="h-2 w-2 rounded-full" style={{ background: dot }} />
-      {text}
-    </span>
   );
 }
 
