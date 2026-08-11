@@ -43,7 +43,7 @@ export function ForecastView() {
   useEffect(() => load(selected), [selected, load]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 lg:space-y-6">
       <DaySelector days={days} selected={selected} onSelect={setSelected} />
 
       {state.kind === "loading" ? (
@@ -71,30 +71,31 @@ function ReadyCard({ data }: { data: ForecastResponse }) {
   );
   const peakB = peak ? busyness(peak.predicted) : null;
 
+  // Desktop puts the summary beside the chart; phone keeps them stacked.
   return (
-    <div className="space-y-4">
-      <section className="rounded-4xl bg-surface/80 p-6 shadow-soft backdrop-blur">
+    <div className="space-y-4 lg:grid lg:grid-cols-12 lg:items-stretch lg:gap-6 lg:space-y-0">
+      <section className="rounded-4xl bg-surface/80 p-6 shadow-soft backdrop-blur lg:col-span-4 lg:p-8">
         <div className="flex items-center justify-between">
-          <p className="font-bold text-ink">{longDate(data.day)}</p>
+          <p className="font-bold text-ink lg:text-lg">{longDate(data.day)}</p>
           <BasisPill basis={data.basis} />
         </div>
 
         {peak && quiet ? (
           <>
-            <p className="mt-4 text-sm font-semibold text-muted">Busiest time</p>
-            <div className="mt-1 flex flex-wrap items-end gap-x-3 gap-y-1">
+            <p className="mt-4 text-sm font-semibold text-muted lg:mt-8">Busiest time</p>
+            <div className="mt-1 flex flex-wrap items-end gap-x-3 gap-y-1 lg:mt-2 lg:block lg:space-y-1">
               <span
-                className="text-4xl font-extrabold leading-none"
+                className="text-4xl font-extrabold leading-none lg:text-5xl"
                 style={{ color: peakB?.color }}
               >
                 {peakB?.label}
               </span>
-              <span className="pb-0.5 text-lg font-bold text-ink">
+              <span className="pb-0.5 text-lg font-bold text-ink lg:block lg:pb-0 lg:text-xl">
                 around {hour12(peak.hour)}
               </span>
             </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-3">
+            <div className="mt-5 grid grid-cols-2 gap-3 lg:mt-8">
               <MiniStat label="Busiest" hour={peak.hour} value={peak.predicted} />
               <MiniStat label="Quietest" hour={quiet.hour} value={quiet.predicted} />
             </div>
@@ -105,13 +106,13 @@ function ReadyCard({ data }: { data: ForecastResponse }) {
       </section>
 
       {preds.length > 0 ? (
-        <section className="rounded-4xl bg-surface/80 p-5 shadow-soft backdrop-blur">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-bold text-ink">Hour by hour</h2>
-            <span className="text-xs font-semibold text-muted">families arriving</span>
+        <section className="flex flex-col rounded-4xl bg-surface/80 p-5 shadow-soft backdrop-blur lg:col-span-8 lg:p-8">
+          <div className="mb-3 flex items-center justify-between lg:mb-6">
+            <h2 className="font-bold text-ink lg:text-lg">Hour by hour</h2>
+            <span className="text-xs font-semibold text-muted lg:text-sm">families arriving</span>
           </div>
           <HourlyStrip predictions={preds} />
-          <p className="mt-3 text-xs text-muted">
+          <p className="mt-3 text-xs text-muted lg:mt-6 lg:text-sm">
             {data.basis === "typical"
               ? "This far out we don’t have live weather yet, so this is a typical day like this one."
               : "A rough guide from past summers and today’s weather — actual numbers vary."}
@@ -125,9 +126,9 @@ function ReadyCard({ data }: { data: ForecastResponse }) {
 function MiniStat({ label, hour, value }: { label: string; hour: number; value: number }) {
   const b = busyness(value);
   return (
-    <div className="rounded-2xl p-3" style={{ background: b.soft }}>
-      <p className="text-xs font-semibold text-muted">{label}</p>
-      <p className="mt-0.5 text-lg font-extrabold text-ink">{hour12(hour)}</p>
+    <div className="rounded-2xl p-3 lg:p-4" style={{ background: b.soft }}>
+      <p className="text-xs font-semibold text-muted lg:text-sm">{label}</p>
+      <p className="mt-0.5 text-lg font-extrabold text-ink lg:text-xl">{hour12(hour)}</p>
       <p className="text-sm font-bold" style={{ color: b.color }}>
         {b.label} · ~{Math.round(value)}/hr
       </p>
@@ -152,7 +153,7 @@ function BasisPill({ basis }: { basis: "forecast" | "typical" | "closed" }) {
 
 function ClosedCard({ day, message }: { day: string; message?: string }) {
   return (
-    <section className="rounded-4xl bg-surface/80 p-8 text-center shadow-soft backdrop-blur">
+    <section className="rounded-4xl bg-surface/80 p-8 text-center shadow-soft backdrop-blur lg:py-20">
       <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-surface-2 text-2xl">
         🌙
       </div>
@@ -167,22 +168,23 @@ function ClosedCard({ day, message }: { day: string; message?: string }) {
 
 function LoadingCard({ slow }: { slow: boolean }) {
   return (
-    <div className="space-y-4">
-      <section className="rounded-4xl bg-surface/60 p-6 shadow-soft">
+    // Mirrors ReadyCard's grid so nothing jumps when the data lands.
+    <div className="space-y-4 lg:grid lg:grid-cols-12 lg:items-stretch lg:gap-6 lg:space-y-0">
+      <section className="rounded-4xl bg-surface/60 p-6 shadow-soft lg:col-span-4 lg:p-8">
         <div className="h-4 w-40 animate-pulse rounded-full bg-surface-2" />
-        <div className="mt-4 h-9 w-52 animate-pulse rounded-full bg-surface-2" />
-        <div className="mt-5 grid grid-cols-2 gap-3">
-          <div className="h-20 animate-pulse rounded-2xl bg-surface-2" />
-          <div className="h-20 animate-pulse rounded-2xl bg-surface-2" />
+        <div className="mt-4 h-9 w-52 animate-pulse rounded-full bg-surface-2 lg:mt-8 lg:h-12" />
+        <div className="mt-5 grid grid-cols-2 gap-3 lg:mt-8">
+          <div className="h-20 animate-pulse rounded-2xl bg-surface-2 lg:h-24" />
+          <div className="h-20 animate-pulse rounded-2xl bg-surface-2 lg:h-24" />
         </div>
       </section>
-      <section className="rounded-4xl bg-surface/60 p-5 shadow-soft">
-        <div className="flex items-end gap-2">
+      <section className="rounded-4xl bg-surface/60 p-5 shadow-soft lg:col-span-8 lg:p-8">
+        <div className="flex h-[112px] items-end gap-2 lg:h-[220px] lg:gap-3">
           {Array.from({ length: 8 }).map((_, i) => (
             <div
               key={i}
-              className="w-7 animate-pulse rounded-full bg-surface-2"
-              style={{ height: `${40 + ((i * 13) % 70)}px` }}
+              className="w-7 animate-pulse rounded-full bg-surface-2 md:w-full md:max-w-[3rem] md:flex-1"
+              style={{ height: `${35 + ((i * 13) % 60)}%` }}
             />
           ))}
         </div>
@@ -197,7 +199,7 @@ function LoadingCard({ slow }: { slow: boolean }) {
 function ErrorCard({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <section
-      className="rounded-4xl bg-surface/80 p-8 text-center shadow-soft backdrop-blur"
+      className="rounded-4xl bg-surface/80 p-8 text-center shadow-soft backdrop-blur lg:py-20"
       role="alert"
     >
       <h2 className="text-lg font-extrabold text-ink">Couldn’t load the forecast</h2>

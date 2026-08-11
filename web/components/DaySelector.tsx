@@ -12,8 +12,9 @@ export function DaySelector({
   onSelect: (iso: string) => void;
 }) {
   return (
+    // Phone: scrolls sideways, bleeding to the screen edge. Desktop: all days fit the row.
     <div
-      className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5"
+      className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 md:mx-0 md:overflow-x-visible md:px-0"
       role="tablist"
       aria-label="Choose a day"
     >
@@ -26,7 +27,7 @@ export function DaySelector({
             role="tab"
             aria-selected={active}
             onClick={() => onSelect(d.iso)}
-            className={`flex shrink-0 flex-col items-center rounded-2xl px-4 py-2.5 leading-tight transition ${
+            className={`flex shrink-0 flex-col items-center rounded-2xl px-4 py-2.5 leading-tight transition md:flex-1 md:px-2 lg:py-3 ${
               active
                 ? "bg-ink text-surface shadow-soft"
                 : "bg-surface/70 text-ink hover:bg-surface"

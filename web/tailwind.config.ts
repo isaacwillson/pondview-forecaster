@@ -24,7 +24,8 @@ const config: Config = {
         "4xl": "1.75rem",
       },
       maxWidth: {
-        app: "30rem",
+        app: "30rem", // phone column
+        desk: "78rem", // desktop page shell
       },
     },
   },
