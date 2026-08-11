@@ -1,10 +1,11 @@
 export function About() {
   return (
-    <details className="mt-4 rounded-4xl bg-surface/60 px-6 py-4 shadow-soft backdrop-blur">
-      <summary className="cursor-pointer list-none font-bold text-ink marker:hidden">
+    <details className="mt-4 rounded-4xl bg-surface/60 px-6 py-4 shadow-soft backdrop-blur lg:mt-6 lg:px-8 lg:py-6">
+      <summary className="cursor-pointer list-none font-bold text-ink marker:hidden lg:text-lg">
         About these forecasts
       </summary>
-      <div className="mt-3 space-y-3 text-sm text-muted">
+      {/* Prose stays at a readable measure even though the card spans the page. */}
+      <div className="mt-3 max-w-3xl space-y-3 text-sm text-muted lg:mt-4 lg:text-base">
         <p>
           These estimate how many families <strong>arrive each hour</strong> — where the
           rushes are — from a summer of pool sign-in sheets and the day&rsquo;s weather.
