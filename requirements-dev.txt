@@ -1,0 +1,8 @@
+# Development-only dependencies, on top of the runtime pins in api/requirements.txt.
+# Nothing here ships in the Lambda image.
+#
+#   .venv311\Scripts\python -m pip install -r api/requirements.txt -r requirements-dev.txt
+#
+# The eval suite (evals/) reads its cases from YAML and calls the live API, so it needs
+# credentials: set ANTHROPIC_API_KEY, or run `ant auth login`.
+PyYAML==6.0.3
