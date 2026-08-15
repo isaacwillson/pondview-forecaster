@@ -20,6 +20,10 @@ RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
 # Application code, the model artifact, and its context sidecar (bands, "typical"
 # baseline, /whatif defaults).
 COPY api/main.py ${LAMBDA_TASK_ROOT}/main.py
+COPY api/prompt.py ${LAMBDA_TASK_ROOT}/prompt.py
+COPY api/aggregate.py ${LAMBDA_TASK_ROOT}/aggregate.py
+COPY api/tools.py ${LAMBDA_TASK_ROOT}/tools.py
+COPY api/chat.py ${LAMBDA_TASK_ROOT}/chat.py
 COPY model/model.joblib ${LAMBDA_TASK_ROOT}/model.joblib
 COPY model/model_context.json ${LAMBDA_TASK_ROOT}/model_context.json
 

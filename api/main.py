@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import joblib
@@ -31,6 +31,17 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 from pydantic import BaseModel
+
+# Two layouts, one module. Locally this runs as `uvicorn api.main:app` from the repo
+# root, so prompt.py is `api.prompt`; in the Lambda image both files sit flat at
+# /var/task (the handler is "main.handler"), so it is bare `prompt`. Same trick as
+# MODEL_PATH below: default to the repo layout, tolerate the image's.
+try:
+    from api.aggregate import summarize
+    from api.prompt import build_system_prompt
+except ImportError:  # pragma: no cover - only taken inside the Lambda image
+    from aggregate import summarize
+    from prompt import build_system_prompt
 
 # --- Site + service configuration ---
 LATITUDE = 40.91822
@@ -51,9 +62,11 @@ UNIT = "family arrivals per hour"
 POSTED_HOURS = {7: (10, 20), 8: (11, 19)}
 MONTH_NAMES = {7: "July", 8: "August"}
 
-# Open-Meteo's forecast reaches ~16 days ahead; beyond that we serve the "typical"
-# baseline instead of erroring.
-MAX_FORECAST_DAYS = 16
+# Open-Meteo's forecast covers 16 days INCLUSIVE of today, i.e. offsets 0..15, so 15 is
+# the last day live weather exists for; beyond it we serve the "typical" baseline instead
+# of erroring. This is an offset, not a count: at 16 Open-Meteo 400s the range request,
+# which used to surface as a 502 on the one date sitting exactly on the boundary.
+MAX_FORECAST_DAYS = 15
 
 # --- Artifacts (model + context sidecar), resolved to the repo layout by default and
 #     overridable via env so the Lambda image can point at /var/task (see api/Dockerfile).
@@ -136,8 +149,13 @@ def _predict(rows: list[dict]) -> np.ndarray:
     return np.clip(MODEL.predict(pd.DataFrame(rows)[FEATURES]), 0, None)
 
 
-def fetch_forecast_weather(day: date) -> pd.DataFrame:
-    """Return one row per hour of `day` with the weather variables the model needs."""
+def fetch_forecast_weather(start: date, end: date) -> pd.DataFrame:
+    """One row per hour between `start` and `end` inclusive, with the model's variables.
+
+    Takes a range rather than a single day so a multi-day question costs ONE Open-Meteo
+    round trip instead of one per day -- /chat asks about whole weeks, and the per-day
+    version turned that into seven sequential network calls.
+    """
     params = {
         "latitude": LATITUDE,
         "longitude": LONGITUDE,
@@ -145,8 +163,8 @@ def fetch_forecast_weather(day: date) -> pd.DataFrame:
         "temperature_unit": TEMPERATURE_UNIT,
         "precipitation_unit": PRECIPITATION_UNIT,
         "timezone": TIMEZONE,
-        "start_date": day.isoformat(),
-        "end_date": day.isoformat(),
+        "start_date": start.isoformat(),
+        "end_date": end.isoformat(),
     }
     response = requests.get(FORECAST_URL, params=params, timeout=30)
     response.raise_for_status()
@@ -156,6 +174,7 @@ def fetch_forecast_weather(day: date) -> pd.DataFrame:
     frame = pd.DataFrame(hourly).rename(columns={"time": "datetime"})
     frame["datetime"] = pd.to_datetime(frame["datetime"])
     frame["hour"] = frame["datetime"].dt.hour
+    frame["date"] = frame["datetime"].dt.date
     return frame
 
 
@@ -185,73 +204,133 @@ def health() -> dict:
     }
 
 
-@app.get("/forecast")
-def forecast(
-    day: str = Query(..., description="Target day, YYYY-MM-DD", examples=["2026-08-06"])
+# Bound on how many days /chat may ask about at once. Caps both the Open-Meteo range and
+# the tokens a single tool result can spend; the assistant is told to narrow instead.
+MAX_QUERY_DAYS = 21
+
+
+def query_forecast(
+    start_date: str,
+    end_date: str | None = None,
+    part_of_day: str | None = None,
+    rank: str | None = None,
+    limit: int = 5,
 ) -> dict:
-    """Banded hourly forecast for `day`, with a `basis` of forecast / typical / closed."""
+    """The assistant's forecast tool: a date window in, a ranked summary out.
+
+    Wires window parsing to forecast_days() (one batched weather fetch) and then to
+    aggregate.summarize() (all the ranking and filtering). Everything it can reject, it
+    rejects with a ValueError phrased for the model to act on -- the chat layer returns
+    those as is_error tool results so it can retry with better arguments.
+    """
     try:
-        target = datetime.strptime(day, "%Y-%m-%d").date()
-    except ValueError:
-        # The ONLY 422: genuinely malformed input. Season/horizon never 422 -- they are
-        # legitimate states (closed / typical), not client errors.
-        raise HTTPException(status_code=422, detail="day must be formatted YYYY-MM-DD")
+        start = date.fromisoformat(start_date)
+        end = date.fromisoformat(end_date) if end_date else start
+    except ValueError as exc:
+        raise ValueError(
+            f"dates must be ISO YYYY-MM-DD; got start_date={start_date!r}, "
+            f"end_date={end_date!r}"
+        ) from exc
 
-    is_weekend = int(target.weekday() >= 5)  # Mon=0 .. Sun=6
-    open_hours = _open_hours(target.month)
+    if end < start:
+        raise ValueError(f"end_date {end} is before start_date {start}")
+    span = (end - start).days + 1
+    if span > MAX_QUERY_DAYS:
+        raise ValueError(
+            f"window is {span} days; ask about {MAX_QUERY_DAYS} days or fewer at a time"
+        )
 
-    # closed -- outside the season. No per-hour numbers, just an honest closed state.
-    if open_hours is None:
-        months = ", ".join(MONTH_NAMES[m] for m in sorted(POSTED_HOURS))
-        return {
-            "basis": "closed",
-            "day": day,
-            "is_weekend": bool(is_weekend),
-            "unit": UNIT,
-            "open_hours": None,
-            "message": f"Closed for the season (the pool is open {months}).",
-        }
+    targets = [start + timedelta(days=offset) for offset in range(span)]
+    payloads = forecast_days(targets)
+    return summarize(payloads, part_of_day=part_of_day, rank=rank, limit=limit)
 
-    days_ahead = (target - date.today()).days
 
-    # typical -- in season but past the live-forecast window: historical baseline,
-    # banded from its own historical spread (this is expected variability, not error).
-    if days_ahead > MAX_FORECAST_DAYS:
-        cells = BASELINE.get(str(is_weekend), {})
-        predictions = []
-        for hour in open_hours:
-            cell = cells.get(str(hour))
-            if cell is None:
-                continue  # no historical observations for this (hour, is_weekend)
-            mean, spread = cell["mean"], cell["spread"]
-            predictions.append(
-                {
-                    "hour": hour,
-                    "predicted": round(mean, 1),
-                    "low": round(max(0.0, mean - spread), 1),
-                    "high": round(mean + spread, 1),
-                }
-            )
-        return {
-            "basis": "typical",
-            "day": day,
-            "is_weekend": bool(is_weekend),
-            "unit": UNIT,
-            "open_hours": open_hours,
-            "predictions": predictions,
-        }
+def chat_system_prompt(today: date | None = None) -> list[str]:
+    """System prompt blocks for the /chat assistant, built from THIS module's constants.
 
-    # forecast -- live weather is available.
-    try:
-        weather = fetch_forecast_weather(target)
-    except (requests.RequestException, ValueError) as exc:
-        raise HTTPException(status_code=502, detail=f"weather fetch failed: {exc}") from exc
+    api/prompt.py deliberately imports nothing from here (it must render without loading
+    the model), so this is the single wiring point -- the assistant's stated season,
+    hours, horizon and model provenance can only ever be what the endpoints above use.
+    """
+    return build_system_prompt(
+        today or date.today(),
+        posted_hours=POSTED_HOURS,
+        month_names=MONTH_NAMES,
+        max_forecast_days=MAX_FORECAST_DAYS,
+        unit=UNIT,
+        temp_range=TEMP_RANGE,
+        meta=CONTEXT["meta"],
+        timezone=TIMEZONE,
+    )
 
+
+def basis_for(target: date, today: date | None = None) -> str:
+    """Which of forecast / typical / closed `target` falls under.
+
+    Season is checked before the horizon, so a far-future out-of-season date is `closed`,
+    not `typical`. api/prompt.py mirrors this to pre-resolve the assistant's date table --
+    keep the two in step.
+    """
+    if _open_hours(target.month) is None:
+        return "closed"
+    if (target - (today or date.today())).days > MAX_FORECAST_DAYS:
+        return "typical"
+    return "forecast"
+
+
+def _closed_payload(target: date) -> dict:
+    """The `closed` state: no per-hour numbers, just an honest out-of-season answer."""
+    months = ", ".join(MONTH_NAMES[m] for m in sorted(POSTED_HOURS))
+    return {
+        "basis": "closed",
+        "day": target.isoformat(),
+        "is_weekend": target.weekday() >= 5,
+        "unit": UNIT,
+        "open_hours": None,
+        "message": f"Closed for the season (the pool is open {months}).",
+    }
+
+
+def _typical_payload(target: date, open_hours: list[int]) -> dict:
+    """In season but past the live-weather window: the historical hour x is_weekend
+    baseline, banded from its own historical spread (expected variability, not error)."""
+    is_weekend = int(target.weekday() >= 5)
+    cells = BASELINE.get(str(is_weekend), {})
+    predictions = []
+    for hour in open_hours:
+        cell = cells.get(str(hour))
+        if cell is None:
+            continue  # no historical observations for this (hour, is_weekend)
+        mean, spread = cell["mean"], cell["spread"]
+        predictions.append(
+            {
+                "hour": hour,
+                "predicted": round(mean, 1),
+                "low": round(max(0.0, mean - spread), 1),
+                "high": round(mean + spread, 1),
+            }
+        )
+    return {
+        "basis": "typical",
+        "day": target.isoformat(),
+        "is_weekend": bool(is_weekend),
+        "unit": UNIT,
+        "open_hours": open_hours,
+        "predictions": predictions,
+    }
+
+
+def _forecast_payload(
+    target: date, open_hours: list[int], weather: pd.DataFrame
+) -> dict:
+    """Live-weather forecast for one day, given that day's slice of the weather frame."""
+    is_weekend = int(target.weekday() >= 5)
     weather_by_hour = weather.set_index("hour")
     missing = [h for h in open_hours if h not in weather_by_hour.index]
     if missing:
         raise HTTPException(
-            status_code=502, detail=f"forecast weather missing hours {missing} for {day}"
+            status_code=502,
+            detail=f"forecast weather missing hours {missing} for {target.isoformat()}",
         )
 
     rows = []
@@ -264,12 +343,62 @@ def forecast(
     preds = _predict(rows)
     return {
         "basis": "forecast",
-        "day": day,
+        "day": target.isoformat(),
         "is_weekend": bool(is_weekend),
         "unit": UNIT,
         "open_hours": open_hours,
         "predictions": [_band(h, float(p)) for h, p in zip(open_hours, preds)],
     }
+
+
+def forecast_days(targets: list[date]) -> list[dict]:
+    """Per-day forecast payloads for `targets`, in the order given.
+
+    The batching point: every day needing live weather is served from ONE Open-Meteo
+    range request spanning the earliest to the latest of them, so a week-long question
+    costs one round trip. Days that are closed or past the horizon never touch the
+    network at all. Each payload is exactly what GET /forecast returns for that day.
+    """
+    bases = {target: basis_for(target) for target in targets}
+    live = sorted(t for t, b in bases.items() if b == "forecast")
+
+    weather = None
+    if live:
+        try:
+            weather = fetch_forecast_weather(live[0], live[-1])
+        except (requests.RequestException, ValueError) as exc:
+            raise HTTPException(
+                status_code=502, detail=f"weather fetch failed: {exc}"
+            ) from exc
+
+    payloads = []
+    for target in targets:
+        basis = bases[target]
+        if basis == "closed":
+            payloads.append(_closed_payload(target))
+            continue
+        open_hours = _open_hours(target.month)
+        if basis == "typical":
+            payloads.append(_typical_payload(target, open_hours))
+            continue
+        day_weather = weather[weather["date"] == target]
+        payloads.append(_forecast_payload(target, open_hours, day_weather))
+    return payloads
+
+
+@app.get("/forecast")
+def forecast(
+    day: str = Query(..., description="Target day, YYYY-MM-DD", examples=["2026-08-06"])
+) -> dict:
+    """Banded hourly forecast for `day`, with a `basis` of forecast / typical / closed."""
+    try:
+        target = datetime.strptime(day, "%Y-%m-%d").date()
+    except ValueError:
+        # The ONLY 422: genuinely malformed input. Season/horizon never 422 -- they are
+        # legitimate states (closed / typical), not client errors.
+        raise HTTPException(status_code=422, detail="day must be formatted YYYY-MM-DD")
+
+    return forecast_days([target])[0]
 
 
 @app.post("/whatif")
