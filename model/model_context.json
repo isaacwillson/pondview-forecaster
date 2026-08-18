@@ -120,6 +120,7 @@
   },
   "temp_range": {
     "max": 90.2,
+    "mean": 77.0,
     "min": 67.0
   },
   "whatif_conditions": {

@@ -36,5 +36,14 @@ ENV CONTEXT_PATH=${LAMBDA_TASK_ROOT}/model_context.json
 # deploy time (e.g. to add a preview/staging URL) without rebuilding the image.
 ENV ALLOWED_ORIGINS=https://pondviewforecast.vercel.app
 
+# ANTHROPIC_API_KEY is deliberately NOT set here. An ENV line bakes the value into an
+# image layer, readable by anyone who can pull from ECR. Set it on the Lambda function
+# instead (console, or `aws lambda update-function-configuration --environment`), or
+# from Secrets Manager. Without it /chat returns 503 and the other endpoints are
+# unaffected, so a deployment that forgets it degrades rather than breaks.
+#
+# The chat path also needs a longer timeout than the default: worst case is two model
+# round trips plus an Open-Meteo call. 30s is comfortable.
+
 # Handler = "<module>.<callable>": main.py's `handler = Mangum(app)`.
 CMD ["main.handler"]

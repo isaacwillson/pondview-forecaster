@@ -18,6 +18,12 @@
 # the behaviour.
 #   tools       exact list of tool names called, in order ([] means it must not call any)
 #   args        subset match against the first call to that tool
+#   args_window_includes  the queried date window covers this date, however it was framed
+#   args_absent one or more arguments were NOT passed
+#   args_multi_day        the queried window spans more than a single day
+#   scenario_args         simulate_conditions got these scenarios (order-insensitive,
+#                         subset match per scenario)
+#   no_invented_temperature  no scenario carries a temperature the question never gave
 #   no_numbers  the answer states no arrival figures (for refusals)
 #   text_any    at least one of these substrings appears (case-insensitive)
 #   text_none   none of these substrings appears
@@ -59,11 +65,16 @@ cases:
   - id: want-it-empty
     category: routing
     question: When should I go if I want it empty?
-    why: Vague phrasing with no date; should still become a window plus a ranking.
+    why: >
+      Vague phrasing with no date at all. The first real run answered for today only and
+      said so, which is honest but narrower than the question -- someone asking this
+      usually means "sometime soon". The prompt now says to span several days and cover
+      both readings, so the window must actually extend past a single day.
     expect:
       tools: [query_forecast]
       args:
         rank: quietest
+      args_multi_day: true
 
   - id: morning-or-evening
     category: routing
@@ -97,17 +108,87 @@ cases:
       args:
         start_date: "2026-08-18"
 
+  # ----------------------------------------------------------------- what-if
+  - id: ninety-and-sunny
+    category: whatif
+    question: How busy would it be if it were 90 and sunny?
+    why: Explicit hypothetical conditions and no date at all -- the clearest what-if.
+    expect:
+      tools: [simulate_conditions]
+      scenario_args:
+        - temperature: 90
+          rain: false
+
+  - id: does-rain-matter
+    category: whatif
+    question: Does rain actually keep people away?
+    why: >
+      A comparison with NO temperature given. The tool must be called with rain varying
+      and temperature omitted on both sides -- inventing a temperature here is the
+      failure. The answer then has to surface the assumption the tool reports back.
+    expect:
+      tools: [simulate_conditions]
+      no_invented_temperature: true
+      text_any: ["assum", "average", "typical", "77"]
+
+  - id: seventy-five-vs-eighty-five
+    category: whatif
+    question: What happens if it's 75 instead of 85?
+    why: Two temperatures in one sentence; both must reach one call as two scenarios.
+    expect:
+      tools: [simulate_conditions]
+      scenario_args:
+        - temperature: 75
+        - temperature: 85
+
+  - id: cloudy-saturday-vs-sunny-tuesday
+    category: whatif
+    question: Is a cloudy Saturday busier than a sunny Tuesday?
+    why: >
+      Day type varies alongside weather, and neither side names a temperature. Tests
+      that is_weekend is extracted correctly on both sides while temperature stays
+      unspecified rather than invented.
+    expect:
+      tools: [simulate_conditions]
+      no_invented_temperature: true
+      scenario_args:
+        - is_weekend: true
+        - is_weekend: false
+
+  - id: absurd-temperature
+    category: whatif
+    question: How busy would the pool be if it were 130 degrees out?
+    why: >
+      Far outside the 67-90F training range. The tool flags `extrapolating` and the
+      answer must pass that on rather than presenting the number as a real prediction.
+    expect:
+      tools: [simulate_conditions]
+      text_any: ["outside", "extrapolat", "never seen", "beyond", "no data", "not seen"]
+
   # ------------------------------------------------------------- boundaries
   - id: three-weeks-out
     category: boundary
     question: How busy will it be in three weeks?
     why: >
-      Resolves to 2026-09-02, which is out of season. The honest answer is that the pool
-      is closed by then -- not a number, and not a refusal to engage.
+      Resolves to 2026-09-02, which is out of season, so the honest answer is that the
+      pool is closed by then. What matters is that the queried window actually covers
+      that date and the answer says closed -- not that it queried that date alone. The
+      first real run widened the window to 08-31..09-02 to also offer the last open day
+      of the season, which is a better answer than the narrow one this case first
+      demanded; the assertion was wrong, not the assistant.
     expect:
       tools: [query_forecast]
-      args:
-        start_date: "2026-09-02"
+      args_window_includes: "2026-09-02"
+      text_any: ["closed", "season"]
+
+  - id: deep-out-of-season
+    category: boundary
+    question: How busy is the pool on Christmas Day?
+    why: >
+      The pure closed case, with no open day nearby to legitimately quote a number from.
+      Splitting this out from three-weeks-out is what lets no_numbers stay strict here
+      while that case stays free to be helpful about adjacent open days.
+    expect:
       no_numbers: true
       text_any: ["closed", "season", "july", "august"]
 

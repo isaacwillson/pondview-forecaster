@@ -20,14 +20,18 @@ from __future__ import annotations
 
 import json
 import os
+import time
+from collections import defaultdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
+import anthropic
 import joblib
 import numpy as np
 import pandas as pd
 import requests
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 from pydantic import BaseModel
@@ -37,10 +41,10 @@ from pydantic import BaseModel
 # /var/task (the handler is "main.handler"), so it is bare `prompt`. Same trick as
 # MODEL_PATH below: default to the repo layout, tolerate the image's.
 try:
-    from api.aggregate import summarize
+    from api.aggregate import summarize, summarize_scenarios
     from api.prompt import build_system_prompt
 except ImportError:  # pragma: no cover - only taken inside the Lambda image
-    from aggregate import summarize
+    from aggregate import summarize, summarize_scenarios
     from prompt import build_system_prompt
 
 # --- Site + service configuration ---
@@ -187,6 +191,7 @@ def root() -> dict:
         "endpoints": {
             "/forecast?day=YYYY-MM-DD": "banded hourly forecast with a basis (forecast/typical/closed)",
             "/whatif": "POST conditions -> hourly curve under those conditions",
+            "/chat": "POST a question -> a plain-language answer built from the above",
             "/health": "service status + what the model was trained on",
             "/docs": "interactive API documentation",
         },
@@ -243,6 +248,189 @@ def query_forecast(
     targets = [start + timedelta(days=offset) for offset in range(span)]
     payloads = forecast_days(targets)
     return summarize(payloads, part_of_day=part_of_day, rank=rank, limit=limit)
+
+
+def simulate_conditions(scenarios: list[dict]) -> dict:
+    """The assistant's what-if tool: one or two hypothetical condition sets.
+
+    Anything the caller leaves out is filled from the season's observed averages and
+    recorded in `defaults_applied`, rather than being refused or silently invented. That
+    keeps "does rain keep people away?" answerable -- it needs no temperature to be
+    meaningful, only the same temperature on both sides -- while still making every
+    assumed value visible in the result.
+    """
+    if not isinstance(scenarios, list) or not 1 <= len(scenarios) <= 2:
+        raise ValueError("scenarios must be a list of one or two condition sets")
+
+    payloads, defaults = [], []
+    for index, scenario in enumerate(scenarios):
+        if not isinstance(scenario, dict):
+            raise ValueError(f"scenario {index} must be an object")
+        unknown = set(scenario) - {"temperature", "is_weekend", "rain"}
+        if unknown:
+            raise ValueError(
+                f"scenario {index} has unknown keys {sorted(unknown)}; allowed: "
+                "temperature, is_weekend, rain"
+            )
+
+        applied: dict[str, str] = {}
+        temperature = scenario.get("temperature")
+        if temperature is None:
+            temperature = TEMP_RANGE["mean"]
+            applied["temperature"] = f"{temperature:g}F, the season's observed average"
+        if not isinstance(temperature, (int, float)) or isinstance(temperature, bool):
+            raise ValueError(f"scenario {index}: temperature must be a number")
+        if not 0 <= temperature <= 130:
+            raise ValueError(
+                f"scenario {index}: temperature {temperature} is not a plausible "
+                "Fahrenheit air temperature"
+            )
+
+        is_weekend = scenario.get("is_weekend")
+        if is_weekend is None:
+            is_weekend = False
+            applied["is_weekend"] = "weekday"
+
+        rain = scenario.get("rain")
+        if rain is None:
+            rain = False
+            applied["rain"] = "dry"
+
+        payloads.append(whatif_payload(bool(is_weekend), float(temperature), bool(rain)))
+        defaults.append(applied)
+
+    return summarize_scenarios(payloads, defaults)
+
+
+# --- /chat limits -------------------------------------------------------------------
+# Unlike /forecast, every /chat request spends money at the model provider, so the input
+# is bounded before it reaches the API rather than after.
+MAX_MESSAGE_CHARS = 500  # a resident's question, not an essay
+MAX_HISTORY_TURNS = 10  # follow-ups keep working; token growth stays bounded
+RATE_LIMIT_REQUESTS = 10  # per client, per window
+RATE_LIMIT_WINDOW_SECONDS = 60
+
+# Per-process request timestamps, keyed by client. This is a speed bump, NOT a real rate
+# limit: Lambda runs concurrent instances that share no memory, so a distributed caller
+# gets one bucket per instance. The controls that actually bound spend are outside this
+# file -- reserved concurrency on the function, and a spend cap on the Anthropic account.
+_recent_requests: dict[str, list[float]] = defaultdict(list)
+
+
+def _client_key(request: Request) -> str:
+    """Best-effort caller identity. X-Forwarded-For first: behind a Lambda function URL
+    the socket peer is the proxy, so request.client would bucket everyone together."""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _rate_limited(key: str) -> bool:
+    now = time.monotonic()
+    cutoff = now - RATE_LIMIT_WINDOW_SECONDS
+    seen = [t for t in _recent_requests[key] if t > cutoff]
+    seen.append(now)
+    _recent_requests[key] = seen
+    if len(_recent_requests) > 10_000:  # bound memory on a long-lived warm container
+        for stale in [k for k, v in _recent_requests.items() if not v or v[-1] < cutoff]:
+            del _recent_requests[stale]
+    return len(seen) > RATE_LIMIT_REQUESTS
+
+
+def _run_chat(*args, **kwargs):
+    """Call the assistant loop, importing it on first use.
+
+    Deferred because the dependency runs the other way at import time: chat.py imports
+    this module for the system prompt, and tools.py imports it for the tool functions.
+    A module-level import here would close that cycle. Python caches the module after
+    the first call, so this costs one dict lookup per request thereafter.
+    """
+    try:
+        from api.chat import run_chat
+    except ImportError:  # pragma: no cover - only taken inside the Lambda image
+        from chat import run_chat
+    return run_chat(*args, **kwargs)
+
+
+class ChatTurn(BaseModel):
+    """One prior turn, as the browser remembers it. Text only -- see normalize_history."""
+
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    history: list[ChatTurn] = []
+
+
+@app.post("/chat")
+def chat(req: ChatRequest, request: Request) -> dict:
+    """Ask the assistant a question about how busy the pool is expected to be.
+
+    Stateless: the browser sends back the turns it wants remembered, because there is no
+    session store to keep them in. The reply carries the tool trace alongside the text so
+    the frontend can show which basis the answer rests on -- forecast, typical or closed
+    -- the same honesty the web UI already shows for a day.
+
+    No streaming: Mangum buffers the whole response, so the caller waits and then gets
+    the full answer. That is a property of running under Lambda, not a design choice.
+    """
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise HTTPException(
+            status_code=503,
+            detail="The chat assistant is not configured on this deployment.",
+        )
+
+    # Rate limit BEFORE validating: an invalid request never reaches the model, but it
+    # does cost a Lambda invocation, so a flood of junk has to be bounded too. Ordering
+    # these the other way round meant a caller could hammer the endpoint indefinitely as
+    # long as every request was malformed.
+    if _rate_limited(_client_key(request)):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many questions just now -- give it a minute and try again.",
+        )
+
+    message = req.message.strip()
+    if not message:
+        raise HTTPException(status_code=422, detail="message must not be empty")
+    if len(message) > MAX_MESSAGE_CHARS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"message must be {MAX_MESSAGE_CHARS} characters or fewer",
+        )
+
+    history = [turn.model_dump() for turn in req.history][-MAX_HISTORY_TURNS:]
+    try:
+        result = _run_chat(message, history=history)
+    except anthropic.APIStatusError as exc:
+        # The provider's status is not this API's status: a 401 there is a deployment
+        # problem here, not something the caller can fix by changing their question.
+        raise HTTPException(
+            status_code=429 if exc.status_code == 429 else 502,
+            detail="The assistant is unavailable right now. Please try again shortly.",
+        ) from exc
+    except anthropic.APIConnectionError as exc:
+        raise HTTPException(
+            status_code=502, detail="Could not reach the assistant."
+        ) from exc
+
+    return {
+        "answer": result.text,
+        "tools_used": result.tool_names,
+        # Which basis the numbers rest on, for the frontend to label the answer with.
+        "basis": sorted(
+            {
+                day["basis"]
+                for call in result.tool_calls
+                if isinstance(call.result, dict)
+                for day in call.result.get("days", [])
+            }
+        ),
+        "unit": UNIT,
+    }
 
 
 def chat_system_prompt(today: date | None = None) -> list[str]:
@@ -401,30 +589,28 @@ def forecast(
     return forecast_days([target])[0]
 
 
-@app.post("/whatif")
-def whatif(req: WhatIfRequest) -> dict:
+def whatif_payload(
+    is_weekend: bool, temperature: float, precipitation: bool
+) -> dict:
     """Hourly curve under supplied conditions -- to make the model's behaviour visible.
 
     Only weekend / temperature / rain are user-driven. Rain on/off selects the wet- or
     dry-hour condition profile (humidity, cloud, wind, precip); temperature is applied on
     top. `assumed` echoes the full weather actually fed to the model, for honesty.
     """
-    is_weekend = int(req.is_weekend)
-    profile = WHATIF_CONDITIONS["wet" if req.precipitation else "dry"]
-    assumed = {"temperature_2m": req.temperature, **profile}
+    profile = WHATIF_CONDITIONS["wet" if precipitation else "dry"]
+    assumed = {"temperature_2m": temperature, **profile}
 
-    rows = [{"hour": h, "is_weekend": is_weekend, **assumed} for h in WHATIF_HOURS]
+    rows = [{"hour": h, "is_weekend": int(is_weekend), **assumed} for h in WHATIF_HOURS]
     preds = _predict(rows)
 
     # Honest signal for the frontend: is the requested temperature outside what we trained on?
-    extrapolating = (
-        req.temperature < TEMP_RANGE["min"] or req.temperature > TEMP_RANGE["max"]
-    )
+    extrapolating = temperature < TEMP_RANGE["min"] or temperature > TEMP_RANGE["max"]
     return {
         "conditions": {
-            "is_weekend": req.is_weekend,
-            "temperature": req.temperature,
-            "precipitation": req.precipitation,
+            "is_weekend": is_weekend,
+            "temperature": temperature,
+            "precipitation": precipitation,
             "assumed": assumed,
         },
         "temp_range": TEMP_RANGE,
@@ -432,6 +618,12 @@ def whatif(req: WhatIfRequest) -> dict:
         "unit": UNIT,
         "predictions": [_band(h, float(p)) for h, p in zip(WHATIF_HOURS, preds)],
     }
+
+
+@app.post("/whatif")
+def whatif(req: WhatIfRequest) -> dict:
+    """Hourly curve under supplied conditions (see whatif_payload)."""
+    return whatif_payload(req.is_weekend, req.temperature, req.precipitation)
 
 
 # AWS Lambda entry point. API Gateway / Function URL -> Mangum -> this ASGI app.

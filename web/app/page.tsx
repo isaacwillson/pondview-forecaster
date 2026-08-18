@@ -3,10 +3,13 @@
 import { useState, type ReactNode } from "react";
 import { ForecastView } from "@/components/ForecastView";
 import { WhatIfView } from "@/components/WhatIfView";
+import { ChatView } from "@/components/ChatView";
 import { About } from "@/components/About";
 
+type Tab = "forecast" | "whatif" | "ask";
+
 export default function Page() {
-  const [tab, setTab] = useState<"forecast" | "whatif">("forecast");
+  const [tab, setTab] = useState<Tab>("forecast");
 
   // Phone: a single narrow column. Desktop (lg+): a wide page where the header and the
   // view tabs share one row and the views spread into columns -- see ForecastView.
@@ -23,7 +26,7 @@ export default function Page() {
         </div>
 
         <div
-          className="mt-5 grid grid-cols-2 gap-1.5 rounded-2xl bg-surface-2 p-1 lg:mt-0 lg:w-80 lg:shrink-0"
+          className="mt-5 grid grid-cols-3 gap-1.5 rounded-2xl bg-surface-2 p-1 lg:mt-0 lg:w-[26rem] lg:shrink-0"
           role="tablist"
           aria-label="Views"
         >
@@ -33,10 +36,13 @@ export default function Page() {
           <TabButton active={tab === "whatif"} onClick={() => setTab("whatif")}>
             What if…
           </TabButton>
+          <TabButton active={tab === "ask"} onClick={() => setTab("ask")}>
+            Ask
+          </TabButton>
         </div>
       </header>
 
-      {tab === "forecast" ? <ForecastView /> : <WhatIfView />}
+      {tab === "forecast" ? <ForecastView /> : tab === "whatif" ? <WhatIfView /> : <ChatView />}
 
       <About />
     </main>

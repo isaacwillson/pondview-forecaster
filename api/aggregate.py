@@ -76,6 +76,111 @@ def _mean(values: list[float]) -> float:
     return round(sum(values) / len(values), 1)
 
 
+# Below this gap in mean arrivals per hour, two scenarios are reported as materially the
+# same rather than one being "busier". The model's own leave-one-day-out error is about
+# 2.9 arrivals/hour, so calling a 0.4 difference a difference would be false precision.
+SAME_WITHIN = 0.5
+
+
+def describe_conditions(conditions: dict) -> str:
+    """"a rainy weekend at 90F" -- a label a person can check against what they asked."""
+    weather = "rainy" if conditions["precipitation"] else "dry"
+    day = "weekend" if conditions["is_weekend"] else "weekday"
+    return f"a {weather} {day} at {conditions['temperature']:g}F"
+
+
+def summarize_scenarios(payloads: list[dict], defaults: list[dict]) -> dict:
+    """Summarize one or two /whatif payloads, comparing them when there are two.
+
+    `defaults[i]` records which conditions the CALLER never supplied and the tool chose,
+    and is carried through to the result untouched. That is the whole mechanism behind
+    "never invent a temperature the user didn't give": the assistant cannot quietly
+    adopt a number, because the tool reports every value it filled in and the system
+    prompt requires those to be stated.
+    """
+    scenarios = []
+    for payload, applied in zip(payloads, defaults):
+        slots = [
+            {
+                "hour": p["hour"],
+                "time": hour12(p["hour"]),
+                "predicted": p["predicted"],
+                "low": p["low"],
+                "high": p["high"],
+                **dict(zip(("level", "label"), level_for(p["predicted"]))),
+            }
+            for p in payload["predictions"]
+        ]
+        scenarios.append(
+            {
+                "description": describe_conditions(payload["conditions"]),
+                "conditions": {
+                    "temperature": payload["conditions"]["temperature"],
+                    "is_weekend": payload["conditions"]["is_weekend"],
+                    "rain": payload["conditions"]["precipitation"],
+                },
+                "defaults_applied": applied,
+                "extrapolating": payload["extrapolating"],
+                "weather_fed_to_model": payload["conditions"]["assumed"],
+                "busiest": max(slots, key=lambda s: s["predicted"]),
+                "quietest": min(slots, key=lambda s: s["predicted"]),
+                "mean": _mean([s["predicted"] for s in slots]),
+                "hours": slots,
+            }
+        )
+
+    summary: dict = {
+        "unit": payloads[0]["unit"],
+        "observed_temperature_range": payloads[0]["temp_range"],
+        "scenarios": scenarios,
+        "notes": [],
+    }
+
+    for scenario in scenarios:
+        if scenario["defaults_applied"]:
+            summary["notes"].append(
+                f"For {scenario['description']}, these were not specified and were "
+                f"assumed: {scenario['defaults_applied']}. Say so in your answer."
+            )
+        if scenario["extrapolating"]:
+            summary["notes"].append(
+                f"{scenario['description']} is outside the observed temperature range "
+                f"({payloads[0]['temp_range']['min']}-{payloads[0]['temp_range']['max']}F); "
+                f"the model is extrapolating and the answer should say so."
+            )
+
+    if len(scenarios) == 2:
+        first, second = scenarios
+        difference = round(second["mean"] - first["mean"], 1)
+        if abs(difference) < SAME_WITHIN:
+            verdict = "about the same"
+        else:
+            busier = second if difference > 0 else first
+            verdict = f"{busier['description']} is busier"
+        summary["comparison"] = {
+            "verdict": verdict,
+            "mean_difference": difference,
+            # Computed here because the assistant will otherwise work it out itself:
+            # the first real eval run had it divide 1.4 by 5.3 and report "roughly a 75%
+            # drop", which is arithmetic this module exists to keep out of the model.
+            "percent_change": (
+                round(difference / first["mean"] * 100)
+                if first["mean"] > 0
+                else None
+            ),
+            "per_hour": [
+                {
+                    "time": a["time"],
+                    "first": a["predicted"],
+                    "second": b["predicted"],
+                    "difference": round(b["predicted"] - a["predicted"], 1),
+                }
+                for a, b in zip(first["hours"], second["hours"])
+            ],
+        }
+    return summary
+
+
 def summarize(
     payloads: list[dict],
     *,
