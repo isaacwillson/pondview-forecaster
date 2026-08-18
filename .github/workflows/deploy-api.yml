@@ -11,7 +11,10 @@ name: Deploy API
 
 on:
   push:
-    branches: [main]
+    # master is this repo's production branch -- there is no `main`. This said `main`
+    # until 2026-08-18, so no push ever matched and the API silently stopped deploying
+    # while the Vercel frontend kept shipping. If you rename the branch, change it here.
+    branches: [master]
     paths:
       - "api/**"
       - "model/model.joblib"
