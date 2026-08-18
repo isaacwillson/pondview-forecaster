@@ -289,9 +289,15 @@ def save_context(df: pd.DataFrame, out: pd.DataFrame) -> None:
             "wet": _conditions(wet_rows, with_precip=True),
         },
         # Observed training temperature range -> /whatif flags extrapolation outside it.
+        # `mean` is what the chat assistant's what-if tool falls back to when the user
+        # names no temperature ("does rain keep people away?"). It is the observed
+        # seasonal average rather than the midpoint of min/max, which outliers skew, and
+        # it is always echoed back to the user as an assumption rather than applied
+        # silently.
         "temp_range": {
             "min": round(float(df["temperature_2m"].min()), 1),
             "max": round(float(df["temperature_2m"].max()), 1),
+            "mean": round(float(df["temperature_2m"].mean()), 1),
         },
     }
     CONTEXT_PATH.write_text(json.dumps(context, indent=2, sort_keys=True) + "\n")

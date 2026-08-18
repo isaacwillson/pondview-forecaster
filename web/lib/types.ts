@@ -44,3 +44,23 @@ export interface WhatIfResponse {
   unit: string;
   predictions: HourPrediction[];
 }
+
+/** One prior turn sent back to /chat. Text only -- the server never accepts tool
+ *  blocks from the browser, so a reply can't be built on a forged tool result. */
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ChatRequest {
+  message: string;
+  history: ChatTurn[];
+}
+
+export interface ChatResponse {
+  answer: string;
+  tools_used: string[];
+  /** Which bases the answer rests on. Empty for what-if answers and refusals. */
+  basis: Basis[];
+  unit: string;
+}

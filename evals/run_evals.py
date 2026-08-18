@@ -14,8 +14,10 @@ question at all are all visible in `tool_calls` without reading a word of the re
 Text matching is deliberately loose and used only where behaviour has no structural
 signature -- a refusal has to be recognised by what it says.
 
-There is no temperature control on this model family, so runs vary. --repeat exists so a
-flake is distinguishable from a real regression; treat a single run as a sample.
+Runs vary even at temperature 0 (allowed on the default model, rejected on the Opus and
+Sonnet 5 profiles), so --repeat exists to distinguish a flake from a real regression;
+treat a single run as a sample. --model sweeps the same suite across models, which is
+the honest way to answer "does the cheap model hold up on this workload".
 """
 
 from __future__ import annotations
@@ -34,7 +36,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from api.chat import ChatResult, run_chat  # noqa: E402
+from api.chat import DEFAULT_MODEL, PROFILES, ChatResult, run_chat  # noqa: E402
 
 CASES_PATH = Path(__file__).with_name("cases.yaml")
 
@@ -43,7 +45,22 @@ CASES_PATH = Path(__file__).with_name("cases.yaml")
 _TIME = re.compile(r"\b\d{1,2}\s*(?::\d{2})?\s*(?:am|pm)\b", re.I)
 _ISO_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 _ORDINAL = re.compile(r"\b\d{1,2}(?:st|nd|rd|th)\b", re.I)
+# Assistants write dates as prose ("September 2", "Aug 31"), not ISO. Without this the
+# day number reads as an invented arrival figure -- which is exactly what it did on the
+# first real run of the three-weeks-out case.
+_MONTH = (
+    r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*"
+)
+_PROSE_DATE = re.compile(rf"\b{_MONTH}\.?\s+\d{{1,2}}\b|\b\d{{1,2}}\s+{_MONTH}\b", re.I)
+_YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
 _NUMBER = re.compile(r"\d+(?:\.\d+)?")
+
+
+def _strip_non_quantities(text: str) -> str:
+    """Remove everything numeric that is a date, time or year rather than a quantity."""
+    for pattern in (_ISO_DATE, _PROSE_DATE, _TIME, _ORDINAL, _YEAR):
+        text = pattern.sub(" ", text)
+    return text
 
 
 def _numbers_in(value: Any, into: set[float]) -> set[float]:
@@ -79,10 +96,12 @@ def ungrounded_numbers(result: ChatResult, system_text: str) -> list[float]:
     for number in list(allowed):
         allowed.add(round(number))
         allowed.add(float(int(number)))
+        # Prose carries direction in words, not signs: a tool result of -74 is quoted as
+        # "a 74% drop". Accept the magnitude, or every signed field reads as invented.
+        allowed.add(abs(number))
+        allowed.add(round(abs(number)))
 
-    text = _ISO_DATE.sub(" ", result.text)
-    text = _TIME.sub(" ", text)
-    text = _ORDINAL.sub(" ", text)
+    text = _strip_non_quantities(result.text)
 
     loose = []
     for match in _NUMBER.findall(text):
@@ -123,9 +142,74 @@ def check(case: dict, result: ChatResult, system_text: str) -> list[str]:
                         f"args.{key}: should have been omitted, got {call.arguments[key]!r}"
                     )
 
+    if "args_window_includes" in expect:
+        call = next((c for c in result.tool_calls if c.name == "query_forecast"), None)
+        if call is None:
+            failures.append("args_window_includes: query_forecast was never called")
+        else:
+            wanted = date.fromisoformat(expect["args_window_includes"])
+            start = date.fromisoformat(call.arguments["start_date"])
+            end_raw = call.arguments.get("end_date")
+            end = date.fromisoformat(end_raw) if end_raw else start
+            if not start <= wanted <= end:
+                failures.append(
+                    f"args_window_includes: {wanted} not covered by {start}..{end}"
+                )
+
+    if "scenario_args" in expect:
+        call = next((c for c in result.tool_calls if c.name == "simulate_conditions"), None)
+        if call is None:
+            failures.append("scenario_args: simulate_conditions was never called")
+        else:
+            got = call.arguments.get("scenarios", [])
+            want = expect["scenario_args"]
+            if len(got) != len(want):
+                failures.append(
+                    f"scenario_args: expected {len(want)} scenario(s), got {len(got)}"
+                )
+            else:
+                # Order-insensitive: "75 instead of 85" does not fix which comes first.
+                unmatched = list(got)
+                for wanted in want:
+                    match = next(
+                        (g for g in unmatched
+                         if all(g.get(k) == v for k, v in wanted.items())),
+                        None,
+                    )
+                    if match is None:
+                        failures.append(f"scenario_args: no scenario matching {wanted} in {got}")
+                    else:
+                        unmatched.remove(match)
+
+    if expect.get("no_invented_temperature"):
+        for call in result.tool_calls:
+            if call.name != "simulate_conditions":
+                continue
+            for index, scenario in enumerate(call.arguments.get("scenarios", [])):
+                if "temperature" in scenario:
+                    failures.append(
+                        f"no_invented_temperature: scenario {index} passed "
+                        f"temperature={scenario['temperature']} which the question "
+                        "never supplied"
+                    )
+
+    if expect.get("args_multi_day"):
+        call = next((c for c in result.tool_calls if c.name == "query_forecast"), None)
+        if call is None:
+            failures.append("args_multi_day: query_forecast was never called")
+        elif not call.arguments.get("end_date"):
+            failures.append(
+                "args_multi_day: queried a single day; an undated question should span "
+                "several days"
+            )
+        elif call.arguments["end_date"] <= call.arguments["start_date"]:
+            failures.append(
+                f"args_multi_day: end_date {call.arguments['end_date']} does not extend "
+                f"past start_date {call.arguments['start_date']}"
+            )
+
     if expect.get("no_numbers"):
-        stripped = _ORDINAL.sub(" ", _TIME.sub(" ", _ISO_DATE.sub(" ", result.text)))
-        found = _NUMBER.findall(stripped)
+        found = _NUMBER.findall(_strip_non_quantities(result.text))
         if found:
             failures.append(f"no_numbers: answer contains {found}")
 
@@ -154,6 +238,12 @@ def main() -> int:
     parser.add_argument("--case", help="only run cases whose id contains this")
     parser.add_argument("--repeat", type=int, default=1, help="runs per case")
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument(
+        "--model",
+        default=DEFAULT_MODEL,
+        choices=sorted(PROFILES),
+        help="which model to evaluate (default: %(default)s)",
+    )
     args = parser.parse_args()
 
     spec = yaml.safe_load(CASES_PATH.read_text(encoding="utf-8"))
@@ -182,12 +272,17 @@ def main() -> int:
     tool_call_counts: list[int] = []
     total_in = total_out = 0
 
-    print(f"today pinned to {today} | {len(cases)} cases | {args.repeat} run(s) each\n")
+    print(
+        f"model {args.model} | today pinned to {today} | {len(cases)} cases | "
+        f"{args.repeat} run(s) each\n"
+    )
 
     for case in cases:
         for run_index in range(args.repeat):
             try:
-                result = run_chat(case["question"], today=today, client=client)
+                result = run_chat(
+                    case["question"], today=today, client=client, model=args.model
+                )
             except (anthropic.AuthenticationError, TypeError) as exc:
                 print(
                     f"\nauthentication failed: {exc}\n\n"
@@ -232,9 +327,19 @@ def main() -> int:
         f"{'OVERALL':<16}{overall_pass:>6}{overall_total:>7}"
         f"{overall_pass / overall_total:>7.0%}"
     )
+    # Per-1M rates, for the cost-per-question line that makes a model comparison concrete.
+    rates = {
+        "claude-haiku-4-5": (1.00, 5.00),
+        "claude-sonnet-5": (3.00, 15.00),
+        "claude-opus-5": (5.00, 25.00),
+    }
+    rate_in, rate_out = rates[args.model]
+    cost = (total_in * rate_in + total_out * rate_out) / 1_000_000
     print(
-        f"\nmean tool calls/question {sum(tool_call_counts) / len(tool_call_counts):.2f}"
+        f"\nmodel {args.model} | mean tool calls/question "
+        f"{sum(tool_call_counts) / len(tool_call_counts):.2f}"
         f" | tokens in {total_in:,} out {total_out:,}"
+        f" | ${cost:.4f} total, ${cost / overall_total:.5f}/question"
     )
 
     if failed_details:

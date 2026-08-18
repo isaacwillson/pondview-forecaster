@@ -1,4 +1,6 @@
 import type {
+  ChatRequest,
+  ChatResponse,
   ForecastResponse,
   WhatIfRequest,
   WhatIfResponse,
@@ -72,4 +74,28 @@ export async function postWhatIf(
     throw new ApiError((await detailOf(res)) ?? `Request failed (${res.status}).`, res.status);
   }
   return (await res.json()) as WhatIfResponse;
+}
+
+export async function postChat(
+  req: ChatRequest,
+  signal?: AbortSignal,
+): Promise<ChatResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl()}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+      signal,
+    });
+  } catch {
+    throw new ApiError("Could not reach the forecast service.", 0);
+  }
+  if (!res.ok) {
+    // 503 (assistant not configured) and 429 (asking too fast) are both states a
+    // resident can meet, so the server's own wording is worth surfacing verbatim
+    // rather than flattening every failure into "something went wrong".
+    throw new ApiError((await detailOf(res)) ?? `Request failed (${res.status}).`, res.status);
+  }
+  return (await res.json()) as ChatResponse;
 }

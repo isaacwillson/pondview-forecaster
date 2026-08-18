@@ -15,9 +15,9 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 try:
-    from api.main import MAX_QUERY_DAYS, query_forecast
+    from api.main import MAX_QUERY_DAYS, query_forecast, simulate_conditions
 except ImportError:  # pragma: no cover - only taken inside the Lambda image
-    from main import MAX_QUERY_DAYS, query_forecast
+    from main import MAX_QUERY_DAYS, query_forecast, simulate_conditions
 
 
 @dataclass(frozen=True)
@@ -105,7 +105,73 @@ QUERY_FORECAST = Tool(
 )
 
 
-TOOLS: tuple[Tool, ...] = (QUERY_FORECAST,)
+SIMULATE_CONDITIONS = Tool(
+    name="simulate_conditions",
+    description=(
+        "Predicted family arrivals per hour under HYPOTHETICAL weather, to show how the "
+        "model responds to conditions. Not tied to any date. Call this only when the "
+        "person supplies imagined conditions ('if it were 90 and sunny', 'on a rainy "
+        "day') or asks to compare two sets of conditions. For a real date -- today, "
+        "Saturday, next week -- use query_forecast instead, even if the question "
+        "mentions weather, because that forecast already includes the real weather.\n\n"
+        "Pass two scenarios to compare them: the result then includes an hour-by-hour "
+        "difference and which one is busier. This is the right shape for 'does rain "
+        "keep people away' and 'what if it were 75 instead of 85'.\n\n"
+        "Do NOT invent conditions the person did not mention. Leave them out and the "
+        "tool fills them from the season's averages and reports exactly what it "
+        "assumed in `defaults_applied` -- state those assumptions in your answer. It "
+        "also reports `extrapolating` when a temperature falls outside the range the "
+        "model was actually trained on."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "scenarios": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 2,
+                "description": (
+                    "One scenario to describe it, or two to compare them. When "
+                    "comparing, vary only what the question varies and leave the rest "
+                    "out so both sides share the same assumptions."
+                ),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "temperature": {
+                            "type": "number",
+                            "description": (
+                                "Air temperature in Fahrenheit. Omit if the person did "
+                                "not give one -- do not guess."
+                            ),
+                        },
+                        "is_weekend": {
+                            "type": "boolean",
+                            "description": (
+                                "True for a weekend day. Omit if unstated; the tool "
+                                "assumes a weekday and says so."
+                            ),
+                        },
+                        "rain": {
+                            "type": "boolean",
+                            "description": (
+                                "True for a rainy day. Omit if unstated; the tool "
+                                "assumes dry and says so."
+                            ),
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+            }
+        },
+        "required": ["scenarios"],
+        "additionalProperties": False,
+    },
+    run=simulate_conditions,
+)
+
+
+TOOLS: tuple[Tool, ...] = (QUERY_FORECAST, SIMULATE_CONDITIONS)
 
 BY_NAME: dict[str, Tool] = {tool.name: tool for tool in TOOLS}
 
