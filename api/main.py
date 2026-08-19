@@ -22,6 +22,8 @@ import json
 import os
 import time
 from collections import defaultdict
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Literal
@@ -441,7 +443,7 @@ def chat_system_prompt(today: date | None = None) -> list[str]:
     hours, horizon and model provenance can only ever be what the endpoints above use.
     """
     return build_system_prompt(
-        today or date.today(),
+        today or current_date(),
         posted_hours=POSTED_HOURS,
         month_names=MONTH_NAMES,
         max_forecast_days=MAX_FORECAST_DAYS,
@@ -450,6 +452,29 @@ def chat_system_prompt(today: date | None = None) -> list[str]:
         meta=CONTEXT["meta"],
         timezone=TIMEZONE,
     )
+
+
+# Test seam. Production never sets this; the eval suite does, so that a case's expected
+# basis is decided by the pinned date rather than by the wall clock. Without it the
+# prompt's date table was pinned while the tools still asked the real calendar, and a
+# case written when a date was 17 days out started failing once it drifted inside the
+# live-forecast horizon -- a passing suite that quietly rots.
+_PINNED_TODAY: ContextVar[date | None] = ContextVar("pinned_today", default=None)
+
+
+def current_date() -> date:
+    """Today, honouring a pin set by tests. The single source of "now" for the API."""
+    return _PINNED_TODAY.get() or date.today()
+
+
+@contextmanager
+def pinned_today(day: date):
+    """Pin `current_date()` for the duration of the block, for tests and evals."""
+    token = _PINNED_TODAY.set(day)
+    try:
+        yield
+    finally:
+        _PINNED_TODAY.reset(token)
 
 
 def basis_for(target: date, today: date | None = None) -> str:
@@ -461,7 +486,7 @@ def basis_for(target: date, today: date | None = None) -> str:
     """
     if _open_hours(target.month) is None:
         return "closed"
-    if (target - (today or date.today())).days > MAX_FORECAST_DAYS:
+    if (target - (today or current_date())).days > MAX_FORECAST_DAYS:
         return "typical"
     return "forecast"
 

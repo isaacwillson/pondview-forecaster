@@ -37,6 +37,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from api.chat import DEFAULT_MODEL, PROFILES, ChatResult, run_chat  # noqa: E402
+from api.main import pinned_today  # noqa: E402
 
 CASES_PATH = Path(__file__).with_name("cases.yaml")
 
@@ -280,9 +281,13 @@ def main() -> int:
     for case in cases:
         for run_index in range(args.repeat):
             try:
-                result = run_chat(
-                    case["question"], today=today, client=client, model=args.model
-                )
+                # Pin the date for the TOOLS as well as the prompt. Without this the
+                # date table said one thing and basis_for() asked the real calendar,
+                # so a case's expected basis drifted as real days passed.
+                with pinned_today(today):
+                    result = run_chat(
+                        case["question"], today=today, client=client, model=args.model
+                    )
             except (anthropic.AuthenticationError, TypeError) as exc:
                 print(
                     f"\nauthentication failed: {exc}\n\n"

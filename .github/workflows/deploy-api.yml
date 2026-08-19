@@ -53,11 +53,19 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           # linux/amd64 matches the Lambda function's x86_64 architecture.
-          docker build --platform linux/amd64 -f api/Dockerfile \
+          #
+          # --provenance=false --sbom=false are load-bearing, not hygiene: buildx
+          # attaches attestations by default, and attestations force the push into an
+          # OCI image INDEX (manifest list). Lambda accepts a single image manifest --
+          # OCI or Docker schema 2 -- but rejects an index with "image manifest, config
+          # or layer media type ... is not supported". Building and pushing in one
+          # buildx step also avoids the local image store re-wrapping it as an index.
+          docker buildx build --platform linux/amd64 \
+            --provenance=false --sbom=false \
+            -f api/Dockerfile \
             -t "$REGISTRY/$REPOSITORY:$IMAGE_TAG" \
-            -t "$REGISTRY/$REPOSITORY:latest" .
-          docker push "$REGISTRY/$REPOSITORY:$IMAGE_TAG"
-          docker push "$REGISTRY/$REPOSITORY:latest"
+            -t "$REGISTRY/$REPOSITORY:latest" \
+            --push .
 
       - name: Update Lambda to the new image
         env:
