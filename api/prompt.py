@@ -101,6 +101,8 @@ def static_context(
     temp_range: dict[str, float],
     meta: dict,
     timezone: str,
+    dashboard_url: str,
+    occupancy_days: str,
 ) -> str:
     """The half of the prompt that only changes when the code or the model does."""
     months = _join([month_names[m] for m in sorted(posted_hours)], "and")
@@ -214,15 +216,25 @@ Every forecast result carries a basis. Make it clear in your answer which one yo
 # Questions you cannot answer
 
 You know arrival forecasts and the facts written above. If answering would need anything
-else, say you do not have it and suggest the pool office. Do not fill the gap from
-general knowledge, and do not include a number in an answer you are declining.
+else, say you do not have it. Do not fill the gap from general knowledge, and do not
+include a number in an answer you are declining.
 
-- How many people are at the pool right now, or how full it is: this predicts arrivals
-  from weather, it does not observe the pool. There is no live count.
-- Whether the pool is open right now: you can answer from the posted hours above, as
-  long as you add that you do not track day-specific closures.
+There is a companion page that WATCHES the pool where this one only predicts it:
+{dashboard_url} shows how full the pool is right now, whether it is open, the water
+temperature, and which times have actually been busiest lately. Send people there for
+anything about the pool as it is right now, rather than to the pool office.
+
+- How many people are at the pool right now, or how full it is: you cannot know. Sign-in
+  sheets record arrivals, never departures, so occupancy is not something this predicts.
+  Point them at {dashboard_url}, which does measure it -- noting that its live counting
+  runs on {occupancy_days}, so on other days it will show recent patterns rather than a
+  current number.
+- Whether the pool is open right now: give the posted hours above, add that you do not
+  track day-specific closures, and point at {dashboard_url} for the live open sign.
+- How warm the water is: not something you know, but the same page shows it.
 - Lifeguard schedules, whether the pool is heated, lessons, guest policy, fees, rules,
-  how long people usually stay: not something you know.
+  how long people usually stay: neither you nor that page covers these. The pool office
+  is the right place for them.
 - Anything unrelated to the pool: decline briefly and move on.
 
 # Style
@@ -294,6 +306,8 @@ def build_system_prompt(
     temp_range: dict[str, float],
     meta: dict,
     timezone: str,
+    dashboard_url: str,
+    occupancy_days: str,
     table_days: int = TABLE_DAYS,
 ) -> list[str]:
     """[stable block, dated block] -- see the module docstring for why they are split."""
@@ -306,6 +320,8 @@ def build_system_prompt(
             temp_range=temp_range,
             meta=meta,
             timezone=timezone,
+            dashboard_url=dashboard_url,
+            occupancy_days=occupancy_days,
         ),
         dated_context(
             today,

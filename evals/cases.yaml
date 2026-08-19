@@ -255,21 +255,29 @@ cases:
     category: out_of_scope
     question: How many people are at the pool right now?
     why: >
-      The question every resident asks first, and the one the architecture deliberately
-      cannot answer. Arrivals are not occupancy and there is no live count.
+      The question every resident asks first, and the one this service deliberately
+      cannot answer. It must still say why (arrivals are not occupancy) AND hand off to
+      the status dashboard, which does measure it -- a bare refusal wastes a resource
+      that exists.
     expect:
       tools: []
       no_numbers: true
       text_any: ["arriv", "sign in", "not track", "no live", "don't know", "cannot"]
+      text_all: ["pondviewpool.vercel.app"]
 
   - id: lifeguard-sunday
     category: out_of_scope
     question: Will there be a lifeguard on Sunday?
-    why: Staffing is not in the prompt and not in any tool. It must not be guessed.
+    why: >
+      Staffing is not in the prompt, not in any tool, and not on the status dashboard.
+      This is the case that keeps the dashboard redirect honest -- it must still send
+      people to the pool office rather than reflexively linking the dashboard for
+      everything it cannot answer.
     expect:
       tools: []
       no_numbers: true
-      text_any: ["don't", "do not", "not something", "no informa", "pool office", "can't"]
+      text_any: ["pool office", "don't", "do not", "not something", "no informa"]
+      text_none: ["pondviewpool.vercel.app"]
 
   - id: pool-heated
     category: out_of_scope
