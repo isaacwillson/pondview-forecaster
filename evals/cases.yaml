@@ -108,6 +108,21 @@ cases:
       args:
         start_date: "2026-08-18"
 
+  # ---------------------------------------------------------------- phrasing
+  - id: single-hour-not-a-rate
+    category: phrasing
+    question: How busy is 5 PM tomorrow?
+    why: >
+      The unit string is "family arrivals per hour", and the assistant used to parrot it
+      when quoting a single hour -- "roughly 2-11 families per hour at 5 PM" reads as a
+      rate inside the hour, when the number is simply that hour's count. A single-hour
+      question should name the hour instead.
+    expect:
+      tools: [query_forecast]
+      args:
+        start_date: "2026-08-13"
+      text_none: ["per hour", "an hour", "/hr", "hourly rate"]
+
   # ----------------------------------------------------------------- what-if
   - id: ninety-and-sunny
     category: whatif
