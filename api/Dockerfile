@@ -1,12 +1,25 @@
 # Lambda container image for the Pondview arrival forecaster.
 #
 # The build context is the REPO ROOT (not api/), because the image needs both the
-# API code under api/ and the trained artifact under model/. Build with:
+# API code under api/ and the trained artifact under model/. Build and push with:
 #
-#   docker build --platform linux/amd64 -f api/Dockerfile -t pondview-forecast:latest .
+#   docker buildx build --platform linux/amd64 \
+#     --provenance=false --sbom=false \
+#     -f api/Dockerfile \
+#     -t <account>.dkr.ecr.<region>.amazonaws.com/<repo>:latest \
+#     --push .
 #
 # --platform linux/amd64 pins the x86_64 architecture the Lambda function must also
 # be configured for; drop it only if you deploy an arm64 (Graviton) function.
+#
+# --provenance=false --sbom=false are load-bearing, not hygiene. Lambda accepts a single
+# image manifest in either Docker V2 Schema 2 or OCI v1 format -- the media type is not
+# the problem. Attestations are: buildx attaches them by default, and that forces the tag
+# to become an OCI image INDEX (a manifest list), which Lambda rejects with "The image
+# manifest, config or layer media type ... is not supported". The push succeeds and only
+# update-function-code fails, so the error surfaces well after the apparent cause.
+# Build and push in the one buildx step too -- a separate `docker push` from the local
+# image store can re-wrap the image as an index.
 FROM public.ecr.aws/lambda/python:3.11
 
 # Dependencies first: this layer is cached and only rebuilds when requirements change.
