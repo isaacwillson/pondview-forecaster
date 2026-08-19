@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Nunito } from "next/font/google";
 import "./globals.css";
+import { PostHogSetup } from "@/components/PostHogSetup";
 
 // A friendly, rounded, highly legible typeface -- approachable for residents.
 const nunito = Nunito({
@@ -53,7 +54,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={nunito.variable}>
-      <body>{children}</body>
+      <body>
+        <PostHogSetup />
+        {children}
+      </body>
     </html>
   );
 }

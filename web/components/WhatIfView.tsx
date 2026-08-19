@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import posthog from "posthog-js";
 import { ApiError, postWhatIf } from "@/lib/api";
 import type { HourPrediction, TempRange, WhatIfResponse } from "@/lib/types";
 import { busyness } from "@/lib/busyness";
@@ -62,7 +63,18 @@ export function WhatIfView() {
       <section className="space-y-5 rounded-4xl bg-surface/80 p-6 shadow-soft backdrop-blur lg:col-span-5 lg:space-y-7 lg:p-8">
         <p className="text-sm text-muted lg:text-base">See how the weather changes the crowd.</p>
 
-        <Toggle label="Day" left="Weekday" right="Weekend" value={isWeekend} onChange={setIsWeekend} />
+        <Toggle
+          label="Day"
+          left="Weekday"
+          right="Weekend"
+          value={isWeekend}
+          onChange={(v) => {
+            posthog.capture("whatif_day_type_changed", {
+              day_type: v ? "weekend" : "weekday",
+            });
+            setIsWeekend(v);
+          }}
+        />
 
         <div>
           <div className="flex items-baseline justify-between">
@@ -87,6 +99,11 @@ export function WhatIfView() {
               max={MAX}
               value={temp}
               onChange={(e) => setTemp(Number(e.target.value))}
+              onPointerUp={(e) =>
+                posthog.capture("whatif_temperature_set", {
+                  temperature: Number((e.target as HTMLInputElement).value),
+                })
+              }
               aria-label="Temperature in Fahrenheit"
               className="temp-range absolute inset-0"
             />
@@ -98,7 +115,16 @@ export function WhatIfView() {
           </p>
         </div>
 
-        <Toggle label="Weather" left="Dry" right="Rain" value={rain} onChange={setRain} />
+        <Toggle
+          label="Weather"
+          left="Dry"
+          right="Rain"
+          value={rain}
+          onChange={(v) => {
+            posthog.capture("whatif_rain_changed", { has_rain: v });
+            setRain(v);
+          }}
+        />
       </section>
 
       <section className="rounded-4xl bg-surface/80 p-5 shadow-soft backdrop-blur lg:col-span-7 lg:p-8">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import posthog from "posthog-js";
 import { ApiError, postChat } from "@/lib/api";
 import type { ChatTurn } from "@/lib/types";
 
@@ -144,6 +145,11 @@ export function ChatView({
       setError(null);
       setPending(true);
 
+      posthog.capture("chat_question_sent", {
+        question_length: question.length,
+        questions_used_today: used,
+      });
+
       try {
         const reply = await postChat({ message: question, history });
         setMessages((prev) => [
@@ -155,6 +161,9 @@ export function ChatView({
         setUsed((prev) => {
           const next = prev + 1;
           writeUsage(next);
+          if (next === DAILY_QUESTION_LIMIT) {
+            posthog.capture("chat_daily_limit_reached", { limit: DAILY_QUESTION_LIMIT });
+          }
           return next;
         });
       } catch (err: unknown) {
