@@ -26,8 +26,11 @@ LATITUDE = 40.91822
 LONGITUDE = -74.59974
 
 # The observed season. Inclusive on both ends for the Open-Meteo archive API.
+# Must span every date in day_log.csv: build_dataset.py hard-asserts that no grid hour
+# has a null weather cell, so a stale END_DATE here fails the build rather than quietly
+# training on a short window.
 START_DATE = "2026-07-08"
-END_DATE = "2026-08-04"
+END_DATE = "2026-08-16"
 
 # Order here is the order of columns we persist. These are the six predictors the
 # modeling table is allowed to draw from (build_dataset.py may drop redundant ones).
