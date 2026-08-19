@@ -209,6 +209,14 @@ def check(case: dict, result: ChatResult, system_text: str) -> list[str]:
                 f"past start_date {call.arguments['start_date']}"
             )
 
+    if expect.get("no_fractional_counts"):
+        fractional = re.findall(r"\d+\.\d+", _strip_non_quantities(result.text))
+        if fractional:
+            failures.append(
+                f"no_fractional_counts: families are whole, but the answer quotes "
+                f"{fractional}"
+            )
+
     if expect.get("no_numbers"):
         found = _NUMBER.findall(_strip_non_quantities(result.text))
         if found:
