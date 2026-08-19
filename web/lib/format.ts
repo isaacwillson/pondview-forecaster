@@ -44,6 +44,25 @@ export function longDate(iso: string): string {
   });
 }
 
+/**
+ * How to name `iso` inside a sentence, relative to today: "today", "tomorrow", or the
+ * weekday ("Saturday").
+ *
+ * Used by the suggested questions on the forecast view so they carry the day the
+ * resident is actually looking at. Without that they read as a non-sequitur -- you are
+ * studying Saturday, you tap a question, and the app answers about today instead.
+ */
+export function dayPhrase(iso: string, from: Date = new Date()): string {
+  const base = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  if (iso === toISODate(base)) return "today";
+  const tomorrow = new Date(base);
+  tomorrow.setDate(base.getDate() + 1);
+  if (iso === toISODate(tomorrow)) return "tomorrow";
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", { weekday: "long" });
+}
+
 export interface DayOption {
   iso: string;
   label: string; // "Today", "Tomorrow", or weekday "Sat"

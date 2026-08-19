@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, getForecast } from "@/lib/api";
 import type { ForecastResponse, HourPrediction } from "@/lib/types";
-import { longDate, toISODate, upcomingDays, hour12 } from "@/lib/format";
+import { dayPhrase, longDate, toISODate, upcomingDays, hour12 } from "@/lib/format";
 import { busyness } from "@/lib/busyness";
 import { DaySelector } from "./DaySelector";
 import { HourlyStrip } from "./HourlyStrip";
@@ -13,7 +13,7 @@ type State =
   | { kind: "error"; message: string }
   | { kind: "ready"; data: ForecastResponse };
 
-export function ForecastView() {
+export function ForecastView({ onAsk }: { onAsk: (question: string) => void }) {
   const days = useMemo(() => upcomingDays(new Date(), 8), []);
   const [selected, setSelected] = useState<string>(() => toISODate(new Date()));
   const [state, setState] = useState<State>({ kind: "loading" });
@@ -55,7 +55,51 @@ export function ForecastView() {
       ) : (
         <ReadyCard data={state.data} />
       )}
+
+      {/* The door to the assistant, placed where the question actually occurs to
+          someone: just under the numbers they were reading. A tab alone is easy to
+          miss, and it also loses the day they had selected. Shown only once real
+          numbers are on screen -- inviting follow-ups about a closed day is noise. */}
+      {state.kind === "ready" && state.data.basis !== "closed" ? (
+        <SuggestedQuestions iso={selected} onAsk={onAsk} />
+      ) : null}
     </div>
+  );
+}
+
+function SuggestedQuestions({
+  iso,
+  onAsk,
+}: {
+  iso: string;
+  onAsk: (question: string) => void;
+}) {
+  const phrase = dayPhrase(iso);
+  // "today afternoon" is not English; everything else works unchanged.
+  const afternoon = phrase === "today" ? "this" : phrase;
+  const questions = [
+    `When should I go ${phrase}?`,
+    `Is ${afternoon} afternoon crowded?`,
+    // Deliberately day-independent: it is the one that shows the what-if side exists.
+    "Does rain actually keep people away?",
+  ];
+
+  return (
+    <section className="rounded-4xl bg-surface/60 p-5 shadow-soft backdrop-blur lg:p-6">
+      <p className="text-sm font-bold text-ink lg:text-base">Ask about it</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {questions.map((q) => (
+          <button
+            key={q}
+            type="button"
+            onClick={() => onAsk(q)}
+            className="rounded-2xl bg-surface-2 px-4 py-2.5 text-left text-sm font-semibold text-ink transition hover:bg-surface lg:text-base"
+          >
+            {q}
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 
