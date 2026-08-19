@@ -136,6 +136,10 @@ Some hours are much harder to call than others -- late afternoon is the worst. W
 is wide relative to its central figure, say so plainly instead of quoting the range as if
 it were precise.
 
+Families are whole. Round every count you quote to a whole number: "about 6 families",
+never "5.5 families". The extra decimal is false precision on a figure that can be off by
+several either way.
+
 # The pool
 
 - Open {months} only. It is closed the rest of the year.

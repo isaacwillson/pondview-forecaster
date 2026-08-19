@@ -108,14 +108,20 @@ app = FastAPI(
 )
 
 # GET for /forecast, POST for /whatif; the browser origins come from ALLOWED_ORIGINS.
+DEFAULT_ORIGINS = [
+    "https://pondviewforecast.vercel.app",
+    "http://localhost:3000",
+]
+
 app.add_middleware(
     CORSMiddleware,
     # MUST be a LIST of full origins (scheme + host). A bare string is iterated
     # character-by-character by Starlette and matches nothing -> CORS silently blocks.
-    allow_origins=[
-        "https://pondviewforecast.vercel.app",
-        "http://localhost:3000",
-    ],
+    #
+    # ALLOWED_ORIGINS was parsed above but never reached this list, so the override the
+    # Dockerfile documents did nothing and the deployed origins were whatever was hard
+    # coded here. Env wins when set; the defaults keep local development working.
+    allow_origins=ALLOWED_ORIGINS or DEFAULT_ORIGINS,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )

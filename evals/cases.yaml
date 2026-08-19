@@ -122,6 +122,7 @@ cases:
       args:
         start_date: "2026-08-13"
       text_none: ["per hour", "an hour", "/hr", "hourly rate"]
+      no_fractional_counts: true
 
   # ----------------------------------------------------------------- what-if
   - id: ninety-and-sunny
