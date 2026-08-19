@@ -294,7 +294,11 @@ def main() -> int:
                 # so a case's expected basis drifted as real days passed.
                 with pinned_today(today):
                     result = run_chat(
-                        case["question"], today=today, client=client, model=args.model
+                        case["question"],
+                        history=case.get("history"),
+                        today=today,
+                        client=client,
+                        model=args.model,
                     )
             except (anthropic.AuthenticationError, TypeError) as exc:
                 print(
