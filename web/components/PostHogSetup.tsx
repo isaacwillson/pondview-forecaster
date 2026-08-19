@@ -2,6 +2,46 @@
 
 import { useEffect } from "react";
 import posthog from "posthog-js";
+import type { BeforeSendFn } from "posthog-js";
+
+/**
+ * Messages thrown by scripts that in-app browsers inject into the page.
+ * The Facebook iOS in-app browser probes for its native bridge and throws
+ * this one. The code is not ours, so the exception is noise.
+ */
+const INJECTED_BROWSER_NOISE = ["window.webkit.messageHandlers"];
+
+/**
+ * Drops an unhandled exception that carries no frame from our bundle and
+ * matches a known injected message. Genuine app errors keep their own
+ * frames, so they still flow.
+ */
+const dropInjectedBrowserNoise: BeforeSendFn = (event) => {
+  if (!event || event.event !== "$exception") {
+    return event;
+  }
+
+  const exceptions = event.properties?.$exception_list;
+  if (!Array.isArray(exceptions) || exceptions.length === 0) {
+    return event;
+  }
+
+  const allInjectedNoise = exceptions.every((exception) => {
+    if (exception?.mechanism?.handled !== false) {
+      return false;
+    }
+    const frames = exception?.stacktrace?.frames;
+    const fromOurBundle =
+      Array.isArray(frames) && frames.some((frame) => frame?.in_app);
+    if (fromOurBundle) {
+      return false;
+    }
+    const message = exception?.value ?? "";
+    return INJECTED_BROWSER_NOISE.some((pattern) => message.includes(pattern));
+  });
+
+  return allInjectedNoise ? null : event;
+};
 
 /**
  * Initializes posthog-js once on the client.
@@ -35,6 +75,7 @@ export function PostHogSetup() {
       defaults: "2026-01-30",
       capture_exceptions: true,
       debug: process.env.NODE_ENV === "development",
+      before_send: dropInjectedBrowserNoise,
     });
   }, []);
 
