@@ -12,7 +12,7 @@ const nunito = Nunito({
 });
 
 export const metadata: Metadata = {
-  title: "Pondview Pool — how busy is it?",
+  title: "Pondview Pool Forecaster",
   description:
     "See when Pondview Pool is quiet or busy, hour by hour, predicted from the day's weather.",
 };
