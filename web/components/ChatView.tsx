@@ -87,7 +87,15 @@ interface Message extends ChatTurn {
   id: number;
 }
 
-export function ChatView() {
+export function ChatView({
+  pendingQuestion,
+  onQuestionConsumed,
+}: {
+  /** A question handed over from another view (the forecast suggestions). Asked on
+   *  arrival, so the resident lands here with the answer already coming. */
+  pendingQuestion: string | null;
+  onQuestionConsumed: () => void;
+}) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
@@ -160,6 +168,23 @@ export function ChatView() {
     },
     [messages, pending, exhausted],
   );
+
+  // Ask a question handed over from the forecast view. The ref guards two things: a
+  // second delivery of the same question (React re-invokes effects on mount in dev
+  // StrictMode, which would send it twice), and re-firing when `send` is rebuilt as
+  // messages change. It clears once the prop goes back to null, so tapping the same
+  // suggestion again later still works.
+  const handedOver = useRef<string | null>(null);
+  useEffect(() => {
+    if (!pendingQuestion) {
+      handedOver.current = null;
+      return;
+    }
+    if (handedOver.current === pendingQuestion) return;
+    handedOver.current = pendingQuestion;
+    onQuestionConsumed();
+    void send(pendingQuestion);
+  }, [pendingQuestion, onQuestionConsumed, send]);
 
   const empty = messages.length === 0;
 

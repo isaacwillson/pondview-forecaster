@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { ForecastView } from "@/components/ForecastView";
 import { WhatIfView } from "@/components/WhatIfView";
 import { ChatView } from "@/components/ChatView";
@@ -10,6 +10,15 @@ type Tab = "forecast" | "whatif" | "ask";
 
 export default function Page() {
   const [tab, setTab] = useState<Tab>("forecast");
+  // A question handed from the forecast view to the assistant. Held here because it has
+  // to survive the tab switch that carries it across.
+  const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
+
+  const askAssistant = useCallback((question: string) => {
+    setPendingQuestion(question);
+    setTab("ask");
+  }, []);
+  const clearPendingQuestion = useCallback(() => setPendingQuestion(null), []);
 
   // Phone: a single narrow column. Desktop (lg+): a wide page where the header and the
   // view tabs share one row and the views spread into columns -- see ForecastView.
@@ -36,13 +45,31 @@ export default function Page() {
           <TabButton active={tab === "whatif"} onClick={() => setTab("whatif")}>
             What if…
           </TabButton>
-          <TabButton active={tab === "ask"} onClick={() => setTab("ask")}>
+          <TabButton active={tab === "ask"} accent onClick={() => setTab("ask")}>
             Ask
           </TabButton>
         </div>
       </header>
 
-      {tab === "forecast" ? <ForecastView /> : tab === "whatif" ? <WhatIfView /> : <ChatView />}
+      {/* All three stay mounted and are hidden rather than swapped out, so each view
+          keeps its state across a tab switch. Swapping them threw that state away: the
+          conversation vanished, and the forecast's selected day snapped back to today.
+          Both matter now that the suggestion buttons send people back and forth --
+          picking Saturday, asking about it, and returning to "Today" is disorienting,
+          and the next suggestion would then quietly be about the wrong day.
+          `hidden` also drops the inactive views out of the accessibility tree. */}
+      <div hidden={tab !== "forecast"}>
+        <ForecastView onAsk={askAssistant} />
+      </div>
+      <div hidden={tab !== "whatif"}>
+        <WhatIfView />
+      </div>
+      <div hidden={tab !== "ask"}>
+        <ChatView
+          pendingQuestion={pendingQuestion}
+          onQuestionConsumed={clearPendingQuestion}
+        />
+      </div>
 
       <About />
     </main>
@@ -51,13 +78,18 @@ export default function Page() {
 
 function TabButton({
   active,
+  accent,
   onClick,
   children,
 }: {
   active: boolean;
+  /** Tint this tab when inactive so it does not read as the third of three peers.
+   *  Cheaper and more honest than a "New" badge, which expires and needs removing. */
+  accent?: boolean;
   onClick: () => void;
   children: ReactNode;
 }) {
+  const inactive = accent ? "text-sun" : "text-muted";
   return (
     <button
       type="button"
@@ -65,7 +97,7 @@ function TabButton({
       role="tab"
       aria-selected={active}
       className={`rounded-xl py-2.5 text-sm font-bold transition ${
-        active ? "bg-surface text-ink shadow-soft" : "text-muted"
+        active ? "bg-surface text-ink shadow-soft" : inactive
       }`}
     >
       {children}
