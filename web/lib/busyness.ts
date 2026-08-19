@@ -2,19 +2,58 @@
 // number they have to interpret. Thresholds are tuned to this pool (typical hour ~6
 // arrivals, peak ~14). Everything is about ARRIVALS -- how many families show up in an
 // hour -- not how full the pool is.
+//
+// The colours are CSS variables (app/globals.css) rather than literals, so they can
+// differ between light and dark. They have to: a single palette cannot serve both, and
+// the previous hardcoded one was tuned on dark and failed WCAG AA as text on light.
+// Keep the python api/ thresholds in api/aggregate.py in step with the cutoffs below.
 
 export interface Busyness {
   level: 0 | 1 | 2 | 3 | 4;
   label: string;
-  color: string; // solid, for the hourly bars
-  soft: string; // translucent, for chips/pills
+  /** Vivid, for large blocks -- the hourly bars. Too light for text on a light card. */
+  fill: string;
+  /** Contrast-safe, for TEXT of any size. Use this whenever the colour is a `color:`. */
+  ink: string;
+  /** Translucent wash of the fill, for chips and tiles. */
+  soft: string;
 }
 
-const QUIET: Busyness = { level: 0, label: "Quiet", color: "#6ba8dd", soft: "rgba(107,168,221,0.16)" };
-const EASY: Busyness = { level: 1, label: "Easygoing", color: "#38b8ac", soft: "rgba(56,184,172,0.16)" };
-const STEADY: Busyness = { level: 2, label: "Steady", color: "#4cb96a", soft: "rgba(76,185,106,0.16)" };
-const BUSY: Busyness = { level: 3, label: "Busy", color: "#f2a23c", soft: "rgba(242,162,60,0.18)" };
-const PACKED: Busyness = { level: 4, label: "Packed", color: "#ec5f5f", soft: "rgba(236,95,95,0.18)" };
+const QUIET: Busyness = {
+  level: 0,
+  label: "Quiet",
+  fill: "var(--busy-quiet)",
+  ink: "var(--busy-quiet-ink)",
+  soft: "var(--busy-quiet-soft)",
+};
+const EASY: Busyness = {
+  level: 1,
+  label: "Easygoing",
+  fill: "var(--busy-easy)",
+  ink: "var(--busy-easy-ink)",
+  soft: "var(--busy-easy-soft)",
+};
+const STEADY: Busyness = {
+  level: 2,
+  label: "Steady",
+  fill: "var(--busy-steady)",
+  ink: "var(--busy-steady-ink)",
+  soft: "var(--busy-steady-soft)",
+};
+const BUSY: Busyness = {
+  level: 3,
+  label: "Busy",
+  fill: "var(--busy-busy)",
+  ink: "var(--busy-busy-ink)",
+  soft: "var(--busy-busy-soft)",
+};
+const PACKED: Busyness = {
+  level: 4,
+  label: "Packed",
+  fill: "var(--busy-packed)",
+  ink: "var(--busy-packed-ink)",
+  soft: "var(--busy-packed-soft)",
+};
 
 /** Map a predicted arrivals/hour value to a friendly busyness level. */
 export function busyness(predicted: number): Busyness {

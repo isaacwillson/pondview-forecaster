@@ -33,7 +33,7 @@ export function HourlyStrip({ predictions }: { predictions: HourPrediction[] }) 
             <div className="flex h-[112px] w-full items-end justify-center lg:h-[220px]">
               <div
                 className="w-7 rounded-full transition-[height] duration-300 md:w-full md:max-w-[3rem]"
-                style={{ height: `${barPct}%`, background: b.color }}
+                style={{ height: `${barPct}%`, background: b.fill }}
               />
             </div>
             <span className="tnum text-base font-extrabold text-ink lg:text-xl">{rounded}</span>

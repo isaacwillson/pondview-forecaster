@@ -127,7 +127,7 @@ function ReadyCard({ data }: { data: ForecastResponse }) {
             <div className="mt-1 flex flex-wrap items-end gap-x-3 gap-y-1 lg:mt-2 lg:block lg:space-y-1">
               <span
                 className="text-4xl font-extrabold leading-none lg:text-5xl"
-                style={{ color: peakB?.color }}
+                style={{ color: peakB?.ink }}
               >
                 {peakB?.label}
               </span>
@@ -170,7 +170,7 @@ function MiniStat({ label, hour, value }: { label: string; hour: number; value: 
     <div className="rounded-2xl p-3 lg:p-4" style={{ background: b.soft }}>
       <p className="text-xs font-semibold text-muted lg:text-sm">{label}</p>
       <p className="mt-0.5 text-lg font-extrabold text-ink lg:text-xl">{hour12(hour)}</p>
-      <p className="text-sm font-bold" style={{ color: b.color }}>
+      <p className="text-sm font-bold" style={{ color: b.ink }}>
         {b.label} · ~{Math.round(value)}/hr
       </p>
     </div>
