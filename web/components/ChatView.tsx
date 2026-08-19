@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError, postChat } from "@/lib/api";
 import type { ChatTurn } from "@/lib/types";
 
@@ -304,6 +304,47 @@ function Opening({
   );
 }
 
+const URL_PATTERN = /https?:\/\/[^\s]+/g;
+
+/**
+ * Turn bare URLs in an answer into real links.
+ *
+ * The assistant sends people to the live-occupancy dashboard when asked how full the
+ * pool is, but a bubble is plain text -- so that redirect arrived as something you had
+ * to retype. Built from an array of nodes rather than injected HTML: the text comes from
+ * a model, and it should never be able to introduce markup.
+ *
+ * Assistant turns only. A resident's own message is shown back as they typed it.
+ */
+function linkify(text: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  for (const match of text.matchAll(URL_PATTERN)) {
+    const start = match.index ?? 0;
+    let url = match[0];
+    // Sentence punctuation stays text -- "...see pondviewpool.vercel.app." should not
+    // put the full stop inside the href.
+    const trailing = /[.,;:!?)\]]+$/.exec(url)?.[0] ?? "";
+    if (trailing) url = url.slice(0, -trailing.length);
+    if (start > cursor) nodes.push(text.slice(cursor, start));
+    nodes.push(
+      <a
+        key={start}
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="font-semibold underline"
+      >
+        {url.replace(/^https?:\/\//, "")}
+      </a>,
+    );
+    if (trailing) nodes.push(trailing);
+    cursor = start + match[0].length;
+  }
+  if (cursor < text.length) nodes.push(text.slice(cursor));
+  return nodes;
+}
+
 function Bubble({ role, text }: { role: ChatTurn["role"]; text: string }) {
   const isUser = role === "user";
   return (
@@ -315,7 +356,7 @@ function Bubble({ role, text }: { role: ChatTurn["role"]; text: string }) {
             : "bg-surface-2 text-ink"
         }`}
       >
-        {text}
+        {isUser ? text : linkify(text)}
       </div>
     </div>
   );
