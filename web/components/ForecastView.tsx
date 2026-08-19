@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import posthog from "posthog-js";
 import { ApiError, getForecast } from "@/lib/api";
 import type { ForecastResponse, HourPrediction } from "@/lib/types";
 import { dayPhrase, longDate, toISODate, upcomingDays, hour12 } from "@/lib/format";
@@ -19,6 +20,19 @@ export function ForecastView({ onAsk }: { onAsk: (question: string) => void }) {
   const [selected, setSelected] = useState<string>(() => toISODate(new Date()));
   const [state, setState] = useState<State>({ kind: "loading" });
   const [slow, setSlow] = useState(false);
+
+  const handleDaySelect = useCallback((iso: string) => {
+    const todayIso = toISODate(new Date());
+    const msPerDay = 86_400_000;
+    const dayOffset = Math.round(
+      (new Date(iso).getTime() - new Date(todayIso).getTime()) / msPerDay,
+    );
+    posthog.capture("forecast_day_selected", {
+      day_offset: dayOffset,
+      is_today: dayOffset === 0,
+    });
+    setSelected(iso);
+  }, []);
 
   const load = useCallback((iso: string) => {
     const controller = new AbortController();
@@ -45,12 +59,18 @@ export function ForecastView({ onAsk }: { onAsk: (question: string) => void }) {
 
   return (
     <div className="space-y-4 lg:space-y-6">
-      <DaySelector days={days} selected={selected} onSelect={setSelected} />
+      <DaySelector days={days} selected={selected} onSelect={handleDaySelect} />
 
       {state.kind === "loading" ? (
         <LoadingCard slow={slow} />
       ) : state.kind === "error" ? (
-        <ErrorCard message={state.message} onRetry={() => load(selected)} />
+        <ErrorCard
+          message={state.message}
+          onRetry={() => {
+            posthog.capture("forecast_error_retried");
+            load(selected);
+          }}
+        />
       ) : state.data.basis === "closed" ? (
         <ClosedCard day={state.data.day} message={state.data.message} />
       ) : (
@@ -88,13 +108,20 @@ function SuggestedQuestions({
   return (
     <section className="rounded-4xl bg-surface/60 p-5 shadow-soft backdrop-blur lg:p-6">
       <p className="text-sm font-bold text-ink lg:text-base">Ask about it</p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {questions.map((q) => (
+      {/* Wrapping put each question on its own row on a phone -- three stacked bars for
+          a secondary action. Scrolling sideways instead keeps all three but costs one
+          row, reusing the day picker's idiom (and its edge bleed, where -mx-5 cancels
+          the card's p-5) so it reads as a familiar control rather than a new one. */}
+      <div className="no-scrollbar -mx-5 mt-3 flex gap-2 overflow-x-auto px-5 md:mx-0 md:flex-wrap md:overflow-x-visible md:px-0">
+        {questions.map((q, index) => (
           <button
             key={q}
             type="button"
-            onClick={() => onAsk(q)}
-            className="rounded-2xl bg-surface-2 px-4 py-2.5 text-left text-sm font-semibold text-ink transition hover:bg-surface lg:text-base"
+            onClick={() => {
+              posthog.capture("suggested_question_clicked", { question_index: index });
+              onAsk(q);
+            }}
+            className="shrink-0 whitespace-nowrap rounded-2xl bg-surface-2 px-4 py-2.5 text-left text-sm font-semibold text-ink transition hover:bg-surface md:whitespace-normal lg:text-base"
           >
             {q}
           </button>
@@ -120,7 +147,12 @@ function ReadyCard({ data }: { data: ForecastResponse }) {
   return (
     <div className="space-y-4 lg:grid lg:grid-cols-12 lg:items-stretch lg:gap-6 lg:space-y-0">
       <section className="rounded-4xl bg-surface/80 p-6 shadow-soft backdrop-blur lg:col-span-4 lg:p-8">
-        <p className="font-bold text-ink lg:text-lg">{longDate(data.day)}</p>
+        {/* Hidden on mobile: the day picker sits directly above with this date already
+            selected, so restating it is a third echo on a small screen. Desktop keeps
+            it, where the card sits beside the chart and needs its own anchor. */}
+        <p className="hidden font-bold text-ink lg:block lg:text-lg">
+          {longDate(data.day)}
+        </p>
 
         {peak && quiet ? (
           <>
@@ -137,8 +169,15 @@ function ReadyCard({ data }: { data: ForecastResponse }) {
               </span>
             </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-3 lg:mt-8">
-              <MiniStat label="Busiest" hour={peak.hour} value={peak.predicted} />
+            {/* The headline above already answers "when is it busiest", so on a phone
+                the Busiest tile repeats it a few pixels lower -- same hour, same label.
+                Desktop keeps the pair, where they sit beside the chart and read as a
+                summary rather than an echo. The busiest hour's rate is still on the bar
+                chart directly below, so nothing is actually lost on mobile. */}
+            <div className="mt-5 grid grid-cols-1 gap-3 lg:mt-8 lg:grid-cols-2">
+              <div className="hidden lg:block">
+                <MiniStat label="Busiest" hour={peak.hour} value={peak.predicted} />
+              </div>
               <MiniStat label="Quietest" hour={quiet.hour} value={quiet.predicted} />
             </div>
           </>
@@ -166,6 +205,7 @@ function ReadyCard({ data }: { data: ForecastResponse }) {
               target="_blank"
               rel="noreferrer"
               className="font-semibold text-ink underline"
+              onClick={() => posthog.capture("live_dashboard_link_clicked")}
             >
               See the live dashboard
             </a>

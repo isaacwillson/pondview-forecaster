@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState, type ReactNode } from "react";
+import posthog from "posthog-js";
 import { ForecastView } from "@/components/ForecastView";
 import { WhatIfView } from "@/components/WhatIfView";
 import { ChatView } from "@/components/ChatView";
@@ -14,10 +15,15 @@ export default function Page() {
   // to survive the tab switch that carries it across.
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
 
+  const switchTab = useCallback((next: Tab) => {
+    posthog.capture("tab_switched", { to_tab: next });
+    setTab(next);
+  }, []);
+
   const askAssistant = useCallback((question: string) => {
     setPendingQuestion(question);
-    setTab("ask");
-  }, []);
+    switchTab("ask");
+  }, [switchTab]);
   const clearPendingQuestion = useCallback(() => setPendingQuestion(null), []);
 
   // Phone: a single narrow column. Desktop (lg+): a wide page where the header and the
@@ -39,13 +45,13 @@ export default function Page() {
           role="tablist"
           aria-label="Views"
         >
-          <TabButton active={tab === "forecast"} onClick={() => setTab("forecast")}>
+          <TabButton active={tab === "forecast"} onClick={() => switchTab("forecast")}>
             Forecast
           </TabButton>
-          <TabButton active={tab === "whatif"} onClick={() => setTab("whatif")}>
+          <TabButton active={tab === "whatif"} onClick={() => switchTab("whatif")}>
             What if…
           </TabButton>
-          <TabButton active={tab === "ask"} accent onClick={() => setTab("ask")}>
+          <TabButton active={tab === "ask"} accent onClick={() => switchTab("ask")}>
             Ask
           </TabButton>
         </div>
