@@ -124,6 +124,27 @@ cases:
       text_none: ["per hour", "an hour", "/hr", "hourly rate"]
       no_fractional_counts: true
 
+  - id: follow-up-not-a-rate
+    category: phrasing
+    question: What about Saturday?
+    history:
+      - role: user
+        content: When is the pool least busy tomorrow?
+      - role: assistant
+        content: The quietest time tomorrow is around 4 PM.
+    why: >
+      The same single-hour phrasing rule, on a follow-up turn. Verified against the live
+      deployment, the direct question obeyed it and this shape did not -- "about 1 family
+      arrives per hour" for a single hour. The suite had no multi-turn coverage at all,
+      which is how it reached production. Also checks the follow-up resolves the implied
+      question ("quietest") from history rather than restarting.
+    expect:
+      tools: [query_forecast]
+      args:
+        start_date: "2026-08-15"
+      text_none: ["per hour", "an hour", "/hr", "hourly rate"]
+      no_fractional_counts: true
+
   # ----------------------------------------------------------------- what-if
   - id: ninety-and-sunny
     category: whatif
