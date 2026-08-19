@@ -19,6 +19,36 @@
   --sun: #ff9e1b;
   --shadow: 0 1px 2px rgba(16, 35, 49, 0.05), 0 10px 26px rgba(16, 35, 49, 0.09);
   color-scheme: light;
+
+  /*
+    Busyness palette (quiet -> packed). Split in two because one colour cannot do both
+    jobs: `-fill` is a large block (the hourly bars) and can stay vivid, while `-ink` is
+    small text and has to meet contrast against the card.
+
+    The vivid values were tuned on the dark theme and failed badly as text on light --
+    "Busy" measured 1.87:1 against its own tint, where AA wants 4.5:1. Hence a separate
+    darker ink set here and a lighter one under the dark override; every pairing now
+    measures >= 4.69:1. Keep it that way if you retune: check the ink against BOTH the
+    card and its own `-soft` tint, which is the tighter of the two.
+
+    `-soft` is a translucent wash of the fill, so it composites correctly over either
+    theme's card and needs no dark-mode override.
+  */
+  --busy-quiet: #6ba8dd;
+  --busy-quiet-ink: #1c5c8f;
+  --busy-quiet-soft: rgba(107, 168, 221, 0.16);
+  --busy-easy: #38b8ac;
+  --busy-easy-ink: #0f6b62;
+  --busy-easy-soft: rgba(56, 184, 172, 0.16);
+  --busy-steady: #4cb96a;
+  --busy-steady-ink: #1f7a3c;
+  --busy-steady-soft: rgba(76, 185, 106, 0.16);
+  --busy-busy: #f2a23c;
+  --busy-busy-ink: #8a5200;
+  --busy-busy-soft: rgba(242, 162, 60, 0.18);
+  --busy-packed: #ec5f5f;
+  --busy-packed-ink: #b52d2d;
+  --busy-packed-soft: rgba(236, 95, 95, 0.18);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -34,6 +64,14 @@
     --sun: #ffbb4d;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 30px rgba(0, 0, 0, 0.38);
     color-scheme: dark;
+
+    /* Only the ink changes: the fills already read well on a dark card, and the soft
+       washes composite fine. "Packed" was the one that fell short here (3.89:1). */
+    --busy-quiet-ink: #8cc0ea;
+    --busy-easy-ink: #5fd3c6;
+    --busy-steady-ink: #6fd189;
+    --busy-busy-ink: #f7b45f;
+    --busy-packed-ink: #ff9090;
   }
 }
 

@@ -113,7 +113,7 @@ export function WhatIfView() {
             <p className="text-sm font-semibold text-muted lg:text-base">
               On a {rain ? "rainy" : "dry"} {isWeekend ? "weekend" : "weekday"} at {temp}&deg;
             </p>
-            <p className="mt-1 text-2xl font-extrabold lg:mt-2 lg:text-3xl" style={{ color: peakB?.color }}>
+            <p className="mt-1 text-2xl font-extrabold lg:mt-2 lg:text-3xl" style={{ color: peakB?.ink }}>
               {peakB?.label} around {hour12(peak.hour)}
             </p>
             <div className="mt-4 lg:mt-8">
