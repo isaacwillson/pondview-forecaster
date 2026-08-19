@@ -5,6 +5,7 @@ import { ApiError, getForecast } from "@/lib/api";
 import type { ForecastResponse, HourPrediction } from "@/lib/types";
 import { dayPhrase, longDate, toISODate, upcomingDays, hour12 } from "@/lib/format";
 import { busyness } from "@/lib/busyness";
+import { STATUS_DASHBOARD_URL } from "@/lib/site";
 import { DaySelector } from "./DaySelector";
 import { HourlyStrip } from "./HourlyStrip";
 
@@ -156,7 +157,19 @@ function ReadyCard({ data }: { data: ForecastResponse }) {
           <p className="mt-3 text-xs text-muted lg:mt-6 lg:text-sm">
             {data.basis === "typical"
               ? "This far out we don’t have live weather yet, so this is a typical day like this one."
-              : "A rough guide from past summers and today’s weather — actual numbers vary."}
+              : "A rough guide from past summers and today’s weather — actual numbers vary."}{" "}
+            {/* The caveat above raises the obvious question -- how full is it *now* --
+                so the answer goes right here rather than in a separate banner. */}
+            Want to know how busy it is right now?{" "}
+            <a
+              href={STATUS_DASHBOARD_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="font-semibold text-ink underline"
+            >
+              See the live dashboard
+            </a>
+            .
           </p>
         </section>
       ) : null}
