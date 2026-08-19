@@ -68,6 +68,13 @@ UNIT = "family arrivals per hour"
 POSTED_HOURS = {7: (10, 20), 8: (11, 19)}
 MONTH_NAMES = {7: "July", 8: "August"}
 
+# The sibling status dashboard. It observes the pool -- live % full, open/closed, water
+# temperature -- which is exactly the half this service cannot do, so occupancy questions
+# are redirected there instead of to the pool office. Its live counting runs only on the
+# days below; the assistant is told so, to avoid promising a live number on a Monday.
+STATUS_DASHBOARD_URL = "https://pondviewpool.vercel.app"
+LIVE_OCCUPANCY_DAYS = "Tuesday, Wednesday, Thursday and Saturday"
+
 # Open-Meteo's forecast covers 16 days INCLUSIVE of today, i.e. offsets 0..15, so 15 is
 # the last day live weather exists for; beyond it we serve the "typical" baseline instead
 # of erroring. This is an offset, not a count: at 16 Open-Meteo 400s the range request,
@@ -457,6 +464,8 @@ def chat_system_prompt(today: date | None = None) -> list[str]:
         temp_range=TEMP_RANGE,
         meta=CONTEXT["meta"],
         timezone=TIMEZONE,
+        dashboard_url=STATUS_DASHBOARD_URL,
+        occupancy_days=LIVE_OCCUPANCY_DAYS,
     )
 
 

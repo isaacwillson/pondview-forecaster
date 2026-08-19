@@ -230,6 +230,10 @@ def check(case: dict, result: ChatResult, system_text: str) -> list[str]:
         if not any(n.lower() in text_lower for n in expect["text_any"]):
             failures.append(f"text_any: none of {expect['text_any']} appeared")
 
+    for needle in expect.get("text_all", []):
+        if needle.lower() not in text_lower:
+            failures.append(f"text_all: answer is missing {needle!r}")
+
     if expect.get("grounded", True):
         loose = ungrounded_numbers(result, system_text)
         if loose:
