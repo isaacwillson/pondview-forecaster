@@ -22,6 +22,60 @@ const MAX_HISTORY_TURNS = 10;
 /** Matches MAX_MESSAGE_CHARS in api/main.py, so the limit is felt before the round trip. */
 const MAX_MESSAGE_CHARS = 500;
 
+/**
+ * Daily question budget.
+ *
+ * This is a courtesy limit, NOT a security control, and it is worth being blunt about
+ * why: the API base URL is compiled into this bundle, so anyone can read it out of
+ * devtools and call /chat directly, and nothing here runs for them. What it does do is
+ * stop honest overuse -- an idle afternoon of questions, a stuck finger on the example
+ * buttons -- which is realistically almost all the traffic this will ever see.
+ *
+ * The controls that actually bound spend live outside the browser: the per-minute
+ * limiter in api/main.py, a concurrency cap on the function, and a spend cap on the
+ * account.
+ */
+const DAILY_QUESTION_LIMIT = 25;
+/** Show the remaining count only once it starts to matter, so it isn't a meter all day. */
+const REMAINING_VISIBLE_AT = 5;
+const USAGE_KEY = "pondview.chat.usage";
+
+interface StoredUsage {
+  date: string;
+  count: number;
+}
+
+/** Local calendar date -- the reset should land at the resident's midnight, not UTC. */
+function todayKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+/** Questions used today. Any storage problem reads as zero: a resident who blocks
+ *  storage or browses privately gets the feature, not a lockout. */
+function readUsage(): number {
+  try {
+    const raw = window.localStorage.getItem(USAGE_KEY);
+    if (!raw) return 0;
+    const parsed = JSON.parse(raw) as StoredUsage;
+    return parsed?.date === todayKey() && Number.isFinite(parsed.count)
+      ? parsed.count
+      : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeUsage(count: number): void {
+  try {
+    const stored: StoredUsage = { date: todayKey(), count };
+    window.localStorage.setItem(USAGE_KEY, JSON.stringify(stored));
+  } catch {
+    // Storage unavailable (private mode, quota, blocked). The in-memory count still
+    // holds for this page view, which is the common case anyway.
+  }
+}
+
 const EXAMPLES = [
   "When is the pool least busy tomorrow?",
   "Is Saturday afternoon going to be crowded?",
@@ -42,6 +96,18 @@ export function ChatView() {
   const scrollAnchor = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Read after mount, never during render: localStorage does not exist while this page
+  // is prerendered, and branching on it in the render body is a hydration mismatch.
+  const [used, setUsed] = useState(0);
+  const [usageReady, setUsageReady] = useState(false);
+  useEffect(() => {
+    setUsed(readUsage());
+    setUsageReady(true);
+  }, []);
+
+  const remaining = Math.max(0, DAILY_QUESTION_LIMIT - used);
+  const exhausted = usageReady && remaining === 0;
+
   // Follow the conversation as it grows, but never on first paint -- yanking a page the
   // resident hasn't scrolled is worse than leaving it be.
   useEffect(() => {
@@ -53,7 +119,7 @@ export function ChatView() {
   const send = useCallback(
     async (text: string) => {
       const question = text.trim();
-      if (!question || pending) return;
+      if (!question || pending || exhausted) return;
 
       // The turns sent back are exactly what is on screen, trimmed to the same window
       // the server keeps. Read before the optimistic append so the new question isn't
@@ -76,6 +142,13 @@ export function ChatView() {
           ...prev,
           { id: nextId.current++, role: "assistant", content: reply.answer },
         ]);
+        // Only a real answer spends budget. A network failure cost the resident their
+        // question already; charging them for it too would be the wrong way round.
+        setUsed((prev) => {
+          const next = prev + 1;
+          writeUsage(next);
+          return next;
+        });
       } catch (err: unknown) {
         setError(
           err instanceof ApiError ? err.message : "Something went wrong. Try again?",
@@ -85,7 +158,7 @@ export function ChatView() {
         inputRef.current?.focus();
       }
     },
-    [messages, pending],
+    [messages, pending, exhausted],
   );
 
   const empty = messages.length === 0;
@@ -100,7 +173,7 @@ export function ChatView() {
           aria-label="Conversation"
         >
           {empty ? (
-            <Opening onPick={send} disabled={pending} />
+            <Opening onPick={send} disabled={pending || exhausted} />
           ) : (
             messages.map((m) => <Bubble key={m.id} role={m.role} text={m.content} />)
           )}
@@ -119,39 +192,57 @@ export function ChatView() {
           <div ref={scrollAnchor} />
         </div>
 
-        <form
-          className="mt-4 flex gap-2 lg:mt-6"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void send(draft);
-          }}
-        >
-          <label htmlFor="chat-input" className="sr-only">
-            Ask about how busy the pool will be
-          </label>
-          <input
-            id="chat-input"
-            ref={inputRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value.slice(0, MAX_MESSAGE_CHARS))}
-            maxLength={MAX_MESSAGE_CHARS}
-            placeholder="Ask about how busy it'll be…"
-            autoComplete="off"
-            disabled={pending}
-            className="min-w-0 flex-1 rounded-2xl bg-surface-2 px-4 py-3 text-ink placeholder:text-muted disabled:opacity-60 lg:text-lg"
-          />
-          <button
-            type="submit"
-            disabled={pending || draft.trim().length === 0}
-            className="shrink-0 rounded-2xl bg-ink px-5 py-3 text-sm font-bold text-surface transition disabled:opacity-40 lg:px-7 lg:text-base"
+        {exhausted ? (
+          <p
+            className="mt-4 rounded-2xl bg-surface-2 px-4 py-3 text-sm font-semibold text-ink lg:mt-6 lg:text-base"
+            role="status"
           >
-            Ask
-          </button>
-        </form>
+            That&rsquo;s {DAILY_QUESTION_LIMIT} questions today — the daily limit. It
+            resets tomorrow, and the Forecast and What&nbsp;if tabs still work.
+          </p>
+        ) : (
+          <form
+            className="mt-4 flex gap-2 lg:mt-6"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void send(draft);
+            }}
+          >
+            <label htmlFor="chat-input" className="sr-only">
+              Ask about how busy the pool will be
+            </label>
+            <input
+              id="chat-input"
+              ref={inputRef}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value.slice(0, MAX_MESSAGE_CHARS))}
+              maxLength={MAX_MESSAGE_CHARS}
+              placeholder="Ask about how busy it'll be…"
+              autoComplete="off"
+              disabled={pending}
+              className="min-w-0 flex-1 rounded-2xl bg-surface-2 px-4 py-3 text-ink placeholder:text-muted disabled:opacity-60 lg:text-lg"
+            />
+            <button
+              type="submit"
+              disabled={pending || draft.trim().length === 0}
+              className="shrink-0 rounded-2xl bg-ink px-5 py-3 text-sm font-bold text-surface transition disabled:opacity-40 lg:px-7 lg:text-base"
+            >
+              Ask
+            </button>
+          </form>
+        )}
 
         <p className="mt-3 text-xs text-muted lg:text-sm">
           Answers cover how many families <strong>arrive</strong> each hour, not how many
           people are at the pool. It can&rsquo;t see the pool — only predict from weather.
+          {usageReady && !exhausted && remaining <= REMAINING_VISIBLE_AT ? (
+            <>
+              {" "}
+              <span className="font-semibold text-ink">
+                {remaining} {remaining === 1 ? "question" : "questions"} left today.
+              </span>
+            </>
+          ) : null}
         </p>
       </section>
     </div>
