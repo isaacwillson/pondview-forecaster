@@ -30,3 +30,10 @@ requests==2.34.2
 # installs prebuilt on this Amazon Linux 2 base like everything above. anthropic needs
 # pydantic>=1.9,<3 and anyio, both already pinned above at compatible versions.
 anthropic==0.122.0
+
+# PostHog AI observability for the server-side Anthropic call (api/chat.py). Pure Python,
+# no compiled extension, so it installs prebuilt on the Amazon Linux 2 base like the rest.
+# posthog.ai.anthropic wraps the client to report model, latency, tokens, cost, errors and
+# tool calls; the question and answer are held back by privacy mode. Optional at runtime:
+# with POSTHOG_PROJECT_API_KEY unset the assistant answers as before and records nothing.
+posthog==7.45.1

@@ -151,7 +151,10 @@ export function ChatView({
       });
 
       try {
-        const reply = await postChat({ message: question, history });
+        // Pass the distinct id so the server-side LLM trace attaches to the same person
+        // who fired chat_question_sent above. Undefined when PostHog has no key set.
+        const distinctId = posthog.get_distinct_id?.();
+        const reply = await postChat({ message: question, history, distinct_id: distinctId });
         setMessages((prev) => [
           ...prev,
           { id: nextId.current++, role: "assistant", content: reply.answer },

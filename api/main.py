@@ -378,6 +378,11 @@ class ChatTurn(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     history: list[ChatTurn] = []
+    # The browser's PostHog distinct id, so a server-side generation lands on the same
+    # person who fired chat_question_sent. Optional -- a direct API caller omits it and
+    # the trace is recorded anonymously. Length-capped in the handler, never trusted for
+    # anything but attribution.
+    distinct_id: str | None = None
 
 
 @app.post("/chat")
@@ -418,8 +423,10 @@ def chat(req: ChatRequest, request: Request) -> dict:
         )
 
     history = [turn.model_dump() for turn in req.history][-MAX_HISTORY_TURNS:]
+    # A distinct id is an identifier, not a payload: accept a sane length or drop it.
+    distinct_id = req.distinct_id if (req.distinct_id and len(req.distinct_id) <= 200) else None
     try:
-        result = _run_chat(message, history=history)
+        result = _run_chat(message, history=history, distinct_id=distinct_id)
     except anthropic.APIStatusError as exc:
         # The provider's status is not this API's status: a 401 there is a deployment
         # problem here, not something the caller can fix by changing their question.

@@ -235,6 +235,14 @@ The chat path also needs a longer Lambda timeout than the default (~30s covers t
 round trips plus a weather fetch), and — because every request costs money — reserved
 concurrency on the function plus a spend cap on the Anthropic account.
 
+**AI observability is optional too.** Set `POSTHOG_PROJECT_API_KEY` on the Lambda and the
+server reports each chat call to PostHog — model, latency, token counts, cost, errors,
+trace IDs and tool calls — so the team can measure the cost and quality of real answers,
+not just that chat was used. `POSTHOG_HOST` defaults to `https://us.i.posthog.com`. The
+question and answer are held back by privacy mode until the team approves that content.
+With the token unset the assistant answers exactly as before and records nothing; a local
+run without it prints one loud warning so the omission is obvious.
+
 ## Repository layout
 
 ```
