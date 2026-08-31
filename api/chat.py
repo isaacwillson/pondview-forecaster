@@ -13,6 +13,10 @@ and Sonnet 5 comparison profiles. Treat a single eval run as a sample, not a ver
 
 from __future__ import annotations
 
+import logging
+import os
+import time
+import uuid
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
@@ -26,9 +30,53 @@ except ImportError:  # pragma: no cover - only taken inside the Lambda image
     from main import chat_system_prompt
     import tools as tool_registry
 
+logger = logging.getLogger(__name__)
+
 # A question needing more than this many rounds of tool calls is one the assistant has
 # lost the thread on; stop rather than burn tokens in a loop.
 MAX_ROUNDS = 4
+
+# PostHog AI observability. The project token that lets the server report model, latency,
+# token counts, cost, errors, trace IDs and tool calls to PostHog. Optional: with it
+# unset the assistant answers exactly as before and reports nothing, the same way /chat
+# already degrades without an Anthropic key.
+POSTHOG_ENV_VAR = "POSTHOG_PROJECT_API_KEY"
+
+_posthog_client: Any = None
+_posthog_ready = False
+
+
+def posthog_client() -> Any:
+    """The process-wide PostHog client, or None when the project token is unset.
+
+    Built once and reused: a fresh client per request would start a new background sender
+    each time. A missing token never breaks the assistant, but it is loud on a local run
+    -- where it is almost always a mistake -- and silent in the Lambda, which the runtime
+    marks with AWS_LAMBDA_FUNCTION_NAME.
+    """
+    global _posthog_client, _posthog_ready
+    if _posthog_ready:
+        return _posthog_client
+    _posthog_ready = True
+
+    token = os.environ.get(POSTHOG_ENV_VAR)
+    if not token:
+        if not os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+            logger.error(
+                "%s variable required by PostHog is missing or un-configured, this "
+                "causes events to be silently missed. This error stops appearing once "
+                "%s is configured",
+                POSTHOG_ENV_VAR,
+                POSTHOG_ENV_VAR,
+            )
+        return None
+
+    from posthog import Posthog
+
+    _posthog_client = Posthog(
+        token, host=os.environ.get("POSTHOG_HOST", "https://us.i.posthog.com")
+    )
+    return _posthog_client
 
 
 @dataclass(frozen=True)
@@ -138,16 +186,52 @@ def run_chat(
     today: date | None = None,
     client: anthropic.Anthropic | None = None,
     model: str = DEFAULT_MODEL,
+    distinct_id: str | None = None,
 ) -> ChatResult:
     """Answer one question, running tools until the model stops asking for them.
 
     `today` is threaded through to the system prompt's date table so evals can pin a
     date and assert on resolved ISO arguments instead of chasing a moving today.
+
+    `distinct_id` links each generation to the person who asked, when the caller knows
+    it. When PostHog is configured and the caller does not inject its own `client`, the
+    Anthropic call is wrapped so PostHog records the model, latency, token counts, cost,
+    errors and tool calls. The question and answer stay out of PostHog: privacy mode
+    redacts them until the team approves that content for AI observability. An injected
+    client -- the eval suite passes one -- is left untraced.
     """
     profile = PROFILES.get(model)
     if profile is None:
         raise ValueError(f"unknown model {model!r}; known: {sorted(PROFILES)}")
-    client = client or anthropic.Anthropic()
+
+    ph = None
+    if client is None:
+        ph = posthog_client()
+        if ph is not None:
+            from posthog.ai.anthropic import Anthropic as TracedAnthropic
+
+            client = TracedAnthropic(posthog_client=ph)
+        else:
+            client = anthropic.Anthropic()
+
+    # One trace groups this question's generations and tool spans. Spans need a distinct
+    # id too, so fall back to the trace id when the caller is anonymous -- that keeps the
+    # generations and spans under one person node without inventing a lasting identity.
+    trace_id = str(uuid.uuid4())
+    event_distinct_id = distinct_id or trace_id
+
+    # Constant for the whole trace, and empty when nothing is traced so the plain client
+    # never sees a posthog_* kwarg it would reject. Privacy mode drops the question and
+    # the answer; lift it once the team approves capturing chat content for observability.
+    trace_kwargs: dict = {}
+    if ph is not None:
+        trace_kwargs = dict(
+            posthog_distinct_id=event_distinct_id,
+            posthog_trace_id=trace_id,
+            posthog_privacy_mode=True,
+            posthog_properties={"$ai_span_name": "pool-chat"},
+        )
+
     stable, dated = chat_system_prompt(today)
     system = [
         # Breakpoint on the stable half only: the dated half rolls over daily and would
@@ -165,61 +249,113 @@ def run_chat(
     messages.append({"role": "user", "content": question})
     result = ChatResult(question=question, text="", model=model, messages=messages)
 
-    for round_index in range(MAX_ROUNDS):
-        response = client.messages.create(
-            system=system,
-            tools=tool_registry.schemas(),
-            messages=messages,
-            **profile.request_kwargs(),
-        )
-        result.rounds = round_index + 1
-        result.stop_reason = response.stop_reason
-        result.input_tokens += response.usage.input_tokens
-        result.output_tokens += response.usage.output_tokens
+    try:
+        for round_index in range(MAX_ROUNDS):
+            response = client.messages.create(
+                system=system,
+                tools=tool_registry.schemas(),
+                messages=messages,
+                **profile.request_kwargs(),
+                **trace_kwargs,
+            )
+            result.rounds = round_index + 1
+            result.stop_reason = response.stop_reason
+            result.input_tokens += response.usage.input_tokens
+            result.output_tokens += response.usage.output_tokens
 
-        # A safety decline arrives as a normal 200 with an empty or partial body, so
-        # check before reading content.
-        if response.stop_reason == "refusal":
-            result.text = "[the model declined to answer this request]"
-            return result
+            # A safety decline arrives as a normal 200 with an empty or partial body, so
+            # check before reading content.
+            if response.stop_reason == "refusal":
+                result.text = "[the model declined to answer this request]"
+                return result
 
-        text = "".join(b.text for b in response.content if b.type == "text")
-        if text:
-            result.text = text
+            text = "".join(b.text for b in response.content if b.type == "text")
+            if text:
+                result.text = text
 
-        tool_uses = [b for b in response.content if b.type == "tool_use"]
-        if not tool_uses:
-            return result
+            tool_uses = [b for b in response.content if b.type == "tool_use"]
+            if not tool_uses:
+                return result
 
-        messages.append({"role": "assistant", "content": response.content})
+            messages.append({"role": "assistant", "content": response.content})
 
-        # All results for one assistant turn go back in a single user message --
-        # splitting them trains the model out of calling tools in parallel.
-        tool_results = []
-        for block in tool_uses:
-            output, is_error = tool_registry.run_tool(block.name, dict(block.input))
-            result.tool_calls.append(
-                ToolCall(
-                    name=block.name,
-                    arguments=dict(block.input),
-                    result=output,
-                    is_error=is_error,
+            # All results for one assistant turn go back in a single user message --
+            # splitting them trains the model out of calling tools in parallel.
+            tool_results = []
+            for block in tool_uses:
+                arguments = dict(block.input)
+                started = time.monotonic()
+                output, is_error = tool_registry.run_tool(block.name, arguments)
+                if ph is not None:
+                    _capture_tool_span(
+                        ph,
+                        event_distinct_id,
+                        trace_id,
+                        block.name,
+                        arguments,
+                        output,
+                        is_error,
+                        time.monotonic() - started,
+                    )
+                result.tool_calls.append(
+                    ToolCall(
+                        name=block.name,
+                        arguments=arguments,
+                        result=output,
+                        is_error=is_error,
+                    )
                 )
-            )
-            tool_results.append(
-                {
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": _as_text(output),
-                    "is_error": is_error,
-                }
-            )
-        messages.append({"role": "user", "content": tool_results})
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": _as_text(output),
+                        "is_error": is_error,
+                    }
+                )
+            messages.append({"role": "user", "content": tool_results})
 
-    result.text = result.text or (
-        f"[gave up after {MAX_ROUNDS} rounds of tool calls without a final answer]"
+        result.text = result.text or (
+            f"[gave up after {MAX_ROUNDS} rounds of tool calls without a final answer]"
+        )
+        return result
+    finally:
+        # Lambda freezes the container the moment the response returns, so the batched
+        # events have to be on the wire before then; flush is a no-op when nothing traced.
+        if ph is not None:
+            ph.flush()
+
+
+def _capture_tool_span(
+    ph: Any,
+    distinct_id: str,
+    trace_id: str,
+    name: str,
+    arguments: dict,
+    output: Any,
+    is_error: bool,
+    latency: float,
+) -> None:
+    """Record one tool call as an `$ai_span` under the trace.
+
+    This is the tool-call quality signal the generation alone cannot show: which tool
+    ran, with which arguments, to what result, how long it took, and whether it failed.
+    The arguments are the model's own extraction, not the resident's question, so this
+    stays clear of the content held back by privacy mode.
+    """
+    ph.capture(
+        "$ai_span",
+        distinct_id=distinct_id,
+        properties={
+            "$ai_trace_id": trace_id,
+            "$ai_span_id": str(uuid.uuid4()),
+            "$ai_span_name": name,
+            "$ai_input_state": arguments,
+            "$ai_output_state": output,
+            "$ai_latency": latency,
+            "$ai_is_error": is_error,
+        },
     )
-    return result
 
 
 def _as_text(output: Any) -> str:

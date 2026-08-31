@@ -55,6 +55,9 @@ export interface ChatTurn {
 export interface ChatRequest {
   message: string;
   history: ChatTurn[];
+  /** The browser's PostHog distinct id, so the server-side LLM trace lands on the same
+   *  person who asked. Optional -- omitted when PostHog has no key configured. */
+  distinct_id?: string;
 }
 
 export interface ChatResponse {
