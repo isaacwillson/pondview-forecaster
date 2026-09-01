@@ -34,6 +34,7 @@ RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
 # baseline, /whatif defaults).
 COPY api/main.py ${LAMBDA_TASK_ROOT}/main.py
 COPY api/prompt.py ${LAMBDA_TASK_ROOT}/prompt.py
+COPY api/season.py ${LAMBDA_TASK_ROOT}/season.py
 COPY api/aggregate.py ${LAMBDA_TASK_ROOT}/aggregate.py
 COPY api/tools.py ${LAMBDA_TASK_ROOT}/tools.py
 COPY api/chat.py ${LAMBDA_TASK_ROOT}/chat.py

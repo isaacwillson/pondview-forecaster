@@ -45,9 +45,25 @@ from pydantic import BaseModel
 try:
     from api.aggregate import summarize, summarize_scenarios
     from api.prompt import build_system_prompt
+    from api.season import (
+        MONTH_NAMES,
+        POSTED_HOURS,
+        SEASON_LAST_MONTH,
+        labor_day,
+        open_hours as _open_hours,
+        season_description,
+    )
 except ImportError:  # pragma: no cover - only taken inside the Lambda image
     from aggregate import summarize, summarize_scenarios
     from prompt import build_system_prompt
+    from season import (
+        MONTH_NAMES,
+        POSTED_HOURS,
+        SEASON_LAST_MONTH,
+        labor_day,
+        open_hours as _open_hours,
+        season_description,
+    )
 
 # --- Site + service configuration ---
 LATITUDE = 40.91822
@@ -62,11 +78,9 @@ ALLOWED_ORIGINS = [
 ]
 UNIT = "family arrivals per hour"
 
-# Posted seasonal pool hours, month -> (open_hour, close_hour), close exclusive. The
-# keys define the SEASON. We assume normal posted hours and never invent day-specific
-# early closures (the frontend methodology copy says so).
-POSTED_HOURS = {7: (10, 20), 8: (11, 19)}
-MONTH_NAMES = {7: "July", 8: "August"}
+# Season, posted hours and Labor Day all live in api/season.py -- see the import block
+# above. We assume normal posted hours and never invent day-specific early closures
+# (the frontend methodology copy says so).
 
 # The sibling status dashboard. It observes the pool -- live % full, open/closed, water
 # temperature -- which is exactly the half this service cannot do, so occupancy questions
@@ -144,12 +158,6 @@ class WhatIfRequest(BaseModel):
     is_weekend: bool = False
     temperature: float
     precipitation: bool = False  # rain on/off
-
-
-def _open_hours(month: int) -> list[int] | None:
-    """Posted open hours for a month, or None if the pool is out of season that month."""
-    posted = POSTED_HOURS.get(month)
-    return None if posted is None else list(range(posted[0], posted[1]))
 
 
 def _band(hour: int, predicted: float) -> dict:
@@ -499,7 +507,7 @@ def basis_for(target: date, today: date | None = None) -> str:
     not `typical`. api/prompt.py mirrors this to pre-resolve the assistant's date table --
     keep the two in step.
     """
-    if _open_hours(target.month) is None:
+    if _open_hours(target) is None:
         return "closed"
     if (target - (today or current_date())).days > MAX_FORECAST_DAYS:
         return "typical"
@@ -507,16 +515,34 @@ def basis_for(target: date, today: date | None = None) -> str:
 
 
 def _closed_payload(target: date) -> dict:
-    """The `closed` state: no per-hour numbers, just an honest out-of-season answer."""
-    months = ", ".join(MONTH_NAMES[m] for m in sorted(POSTED_HOURS))
+    """The `closed` state: no per-hour numbers, just an honest out-of-season answer.
+
+    Names Labor Day rather than listing months, because the season now ends mid-month
+    and "open July, August, September" would be wrong for most of September.
+    """
     return {
         "basis": "closed",
         "day": target.isoformat(),
         "is_weekend": target.weekday() >= 5,
         "unit": UNIT,
         "open_hours": None,
-        "message": f"Closed for the season (the pool is open {months}).",
+        "message": _closed_message(target),
     }
+
+
+def _closed_message(target: date) -> str:
+    """Explain the closure, naming the actual Labor Day date when it clarifies things.
+
+    Someone asking about late September is close to the boundary and benefits from the
+    concrete date; someone asking about January does not.
+    """
+    season = season_description()
+    if target.month == SEASON_LAST_MONTH:
+        # Not strftime("%-d"): that is a glibc extension and raises on Windows.
+        closed_after = labor_day(target.year)
+        pretty = f"{closed_after:%B} {closed_after.day}"
+        return f"Closed for the season (the pool is open {season} — {pretty} this year)."
+    return f"Closed for the season (the pool is open {season})."
 
 
 def _typical_payload(target: date, open_hours: list[int]) -> dict:
@@ -605,7 +631,7 @@ def forecast_days(targets: list[date]) -> list[dict]:
         if basis == "closed":
             payloads.append(_closed_payload(target))
             continue
-        open_hours = _open_hours(target.month)
+        open_hours = _open_hours(target)
         if basis == "typical":
             payloads.append(_typical_payload(target, open_hours))
             continue

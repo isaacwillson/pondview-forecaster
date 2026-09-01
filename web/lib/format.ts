@@ -1,6 +1,11 @@
 // The pool's season (months). Only used to pick a sensible default date; the API is
 // the source of truth for open hours and closed/typical states.
-export const SEASON_MONTHS = [7, 8];
+//
+// September is included because the season runs to Labor Day, but it is only PARTLY
+// open — this list is deliberately coarse, and nextOpenDay may land on a September date
+// the API then reports as closed. That is acceptable for choosing a default; do not
+// reuse this to decide whether the pool is open. Ask the API.
+export const SEASON_MONTHS = [7, 8, 9];
 
 export function toISODate(d: Date): string {
   const y = d.getFullYear();

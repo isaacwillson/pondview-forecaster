@@ -207,16 +207,27 @@ cases:
     category: boundary
     question: How busy will it be in three weeks?
     why: >
-      Resolves to 2026-09-02, which is out of season, so the honest answer is that the
-      pool is closed by then. What matters is that the queried window actually covers
-      that date and the answer says closed -- not that it queried that date alone. The
-      first real run widened the window to 08-31..09-02 to also offer the last open day
-      of the season, which is a better answer than the narrow one this case first
-      demanded; the assertion was wrong, not the assistant.
+      Resolves to 2026-09-02. This used to be a closed-season case; it no longer is --
+      the season runs to Labor Day (2026-09-07), so 09-02 is open, and being past the
+      15-day weather horizon makes it a `typical` day. The answer must say so rather
+      than present it as a live forecast. What matters is that the queried window covers
+      the date; how the window is framed is the assistant's business.
     expect:
       tools: [query_forecast]
       args_window_includes: "2026-09-02"
-      text_any: ["closed", "season"]
+      text_any: ["typical", "this far out", "far ahead", "no live weather", "not a real forecast"]
+
+  - id: day-after-labor-day
+    category: boundary
+    question: Is the pool open on September 8th?
+    why: >
+      The real season boundary now. Labor Day 2026 is the 7th, so the 8th is the first
+      closed day of the year -- and it is closed for a reason no month-level rule can
+      express. A model reasoning from "September" alone gets this wrong in either
+      direction, which is why the prompt hands it a resolved basis table.
+    expect:
+      no_numbers: true
+      text_any: ["closed", "labor day", "season"]
 
   - id: deep-out-of-season
     category: boundary

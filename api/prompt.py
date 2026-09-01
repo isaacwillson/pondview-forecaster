@@ -15,24 +15,26 @@ Caching is a prefix match, so keeping the volatile half last lets a cache breakp
 the static block survive the daily rollover. Joining them with "\n\n" is also fine.
 
 The basis table is the important half. Rather than making the model reason about the
-16-day horizon and the July/August season, we resolve `forecast` / `typical` / `closed`
-per date up front using the same rules /forecast applies -- see _basis_for.
+forecast horizon and a season that ends mid-September on Labor Day, we resolve
+`forecast` / `typical` / `closed` per date up front, using the same rules /forecast
+applies -- see _basis_for, which defers to api/season.py.
 """
 
 from __future__ import annotations
 
 from datetime import date, timedelta
 
+# Both layouts, as in main.py: api.season locally, bare season inside the Lambda image.
+# season.py is pure (datetime only), so importing it here keeps this module renderable
+# without the model.
+try:
+    from api.season import is_open, labor_day, season_description
+except ImportError:  # pragma: no cover - only taken inside the Lambda image
+    from season import is_open, labor_day, season_description
+
 # How many days of the basis table to show. Enough to cover the live-forecast horizon
 # and spill past it, so the model sees a worked example of every basis it can meet.
 TABLE_DAYS = 22
-
-
-def _join(names: list[str], conjunction: str) -> str:
-    """["July", "August"] -> "July and August". Reads better than a bare comma list."""
-    if len(names) <= 1:
-        return "".join(names)
-    return f"{', '.join(names[:-1])} {conjunction} {names[-1]}"
 
 
 def hour12(hour: int) -> str:
@@ -46,19 +48,17 @@ def hour12(hour: int) -> str:
     return f"{display} {suffix}"
 
 
-def _basis_for(
-    day: date,
-    today: date,
-    posted_hours: dict[int, tuple[int, int]],
-    max_forecast_days: int,
-) -> str:
+def _basis_for(day: date, today: date, max_forecast_days: int) -> str:
     """The basis /forecast would return for `day`.
 
-    Deliberately mirrors the branch order in main.py's forecast(): season is checked
-    before the horizon, so a date past the horizon that is also out of season is
-    `closed`, not `typical`.
+    The season test comes from api/season.py rather than being re-derived here: the
+    season ends on Labor Day, mid-month, and a copy of that rule in this file would
+    eventually disagree with the endpoint it is describing.
+
+    Branch order deliberately mirrors main.py's forecast(): season before horizon, so a
+    date past the horizon that is also out of season is `closed`, not `typical`.
     """
-    if day.month not in posted_hours:
+    if not is_open(day):
         return "closed"
     if (day - today).days > max_forecast_days:
         return "typical"
@@ -105,7 +105,7 @@ def static_context(
     occupancy_days: str,
 ) -> str:
     """The half of the prompt that only changes when the code or the model does."""
-    months = _join([month_names[m] for m in sorted(posted_hours)], "and")
+    season = season_description()
     baseline_mae = meta["cv_baseline_mae"]
     model_mae = meta["cv_model_mae"]
     improvement = round((baseline_mae - model_mae) / baseline_mae * 100)
@@ -144,7 +144,10 @@ several either way.
 
 # The pool
 
-- Open {months} only. It is closed the rest of the year.
+- Open {season} only -- Labor Day is the first Monday in September, and the pool closes
+  for the year the day after. September is therefore open at the start of the month and
+  closed for the rest, so never judge a September date from the month alone; read the
+  basis table below.
 {_season_hours(posted_hours, month_names)}
 - All times are {timezone}.
 - Those are the posted hours, and the forecast assumes they are kept. There is no record
@@ -250,8 +253,6 @@ anything about the pool as it is right now, rather than to the pool office.
 def dated_context(
     today: date,
     *,
-    posted_hours: dict[int, tuple[int, int]],
-    month_names: dict[int, str],
     max_forecast_days: int,
     table_days: int = TABLE_DAYS,
 ) -> str:
@@ -264,7 +265,7 @@ def dated_context(
     rows = []
     for offset in range(table_days):
         day = today + timedelta(days=offset)
-        basis = _basis_for(day, today, posted_hours, max_forecast_days)
+        basis = _basis_for(day, today, max_forecast_days)
         marker = "  <- today" if offset == 0 else ""
         day_type = "weekend" if day.weekday() >= 5 else "weekday"
         rows.append(
@@ -272,7 +273,6 @@ def dated_context(
             f"{_BASIS_LABEL[basis]}{marker}"
         )
 
-    months = _join([month_names[m] for m in sorted(posted_hours)], "or")
     last = today + timedelta(days=table_days - 1)
     table = "\n".join(rows)
     # Not strftime("%-d"): that's a glibc extension and blows up on Windows dev boxes.
@@ -289,8 +289,10 @@ table, and pass the ISO date to the tool. The basis column is already resolved f
   DATE        WEEKDAY    TYPE     BASIS
 {table}
 
-For any date after {last.isoformat()}: if it falls in {months} it is a typical day, and
-otherwise the pool is closed.
+For any date after {last.isoformat()}: it is a typical day if it falls inside the season
+(July, August, or September up to and including Labor Day), and otherwise the pool is
+closed. Labor Day is {labor_day(today.year):%B} {labor_day(today.year).day} this year,
+and it moves annually -- do not carry that date into another year.
 
 Dates in the past work too, and come back as a live forecast built from the weather that
 day actually had. Say you are describing what happened rather than what is expected."""
@@ -325,8 +327,6 @@ def build_system_prompt(
         ),
         dated_context(
             today,
-            posted_hours=posted_hours,
-            month_names=month_names,
             max_forecast_days=max_forecast_days,
             table_days=table_days,
         ),

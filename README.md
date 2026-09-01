@@ -93,6 +93,9 @@ image, so the Lambda only ever predicts.
   - `typical` — in season but beyond the forecast horizon: the historical
     hour × weekend baseline, banded from its own spread. Returned instead of an error.
   - `closed` — outside the pool season: a calm closed state, no per-hour numbers.
+    The season runs July through **Labor Day**, so it ends mid-month rather than on a
+    month boundary — [`api/season.py`](api/season.py) computes the first Monday in
+    September and is the one place that rule lives.
 - `POST /whatif` → the hourly curve under supplied conditions (weekend, temperature, rain
   on/off), with an `extrapolating` flag when the temperature is outside the observed range.
 - `POST /chat` → a plain-language answer, plus the tools used and the `basis` behind it.
@@ -248,6 +251,8 @@ model/  fetch_weather.py     pull hourly weather from Open-Meteo
         data/sample/                synthetic stand-in for the resident data
         notebooks/findings.ipynb    narrative walkthrough with charts
 api/    main.py              FastAPI service: /forecast, /whatif, /chat
+        season.py            when the pool is open: posted hours, and the Labor Day
+                             cutoff, in one place because three callers need it
         aggregate.py         pure ranking/filtering over forecast payloads (no model,
                              no network -- testable against fabricated days)
         prompt.py            the assistant's system prompt, built from main.py's
