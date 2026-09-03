@@ -6,6 +6,10 @@
 // assistant reads when it redirects an occupancy question.
 export const STATUS_DASHBOARD_URL = "https://pondviewpool.vercel.app";
 
+/** The source. Linked from the model card -- the claims made there are checkable, and
+ *  saying so is most of what makes them worth making. */
+export const SOURCE_REPO_URL = "https://github.com/isaacwillson/pondview-forecaster";
+
 /** Live counting only runs these days, so the link is worth qualifying rather than
  *  sending someone to an empty dashboard on a Monday. */
 export const LIVE_OCCUPANCY_DAYS = "Tuesdays, Wednesdays, Thursdays and Saturdays";

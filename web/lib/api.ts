@@ -2,6 +2,7 @@ import type {
   ChatRequest,
   ChatResponse,
   ForecastResponse,
+  HealthResponse,
   WhatIfRequest,
   WhatIfResponse,
 } from "@/lib/types";
@@ -53,6 +54,22 @@ export async function getForecast(
     throw new ApiError((await detailOf(res)) ?? `Request failed (${res.status}).`, res.status);
   }
   return (await res.json()) as ForecastResponse;
+}
+
+/** What the deployed model was trained and scored on. Used by the model card, which
+ *  degrades to prose-without-figures if this fails -- a metrics panel is worth showing
+ *  only when the metrics are the live ones. */
+export async function getHealth(signal?: AbortSignal): Promise<HealthResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl()}/health`, { signal });
+  } catch {
+    throw new ApiError("Could not reach the forecast service.", 0);
+  }
+  if (!res.ok) {
+    throw new ApiError((await detailOf(res)) ?? `Request failed (${res.status}).`, res.status);
+  }
+  return (await res.json()) as HealthResponse;
 }
 
 export async function postWhatIf(

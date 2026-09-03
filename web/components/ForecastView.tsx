@@ -5,10 +5,10 @@ import posthog from "posthog-js";
 import { ApiError, getForecast } from "@/lib/api";
 import type { ForecastResponse, HourPrediction } from "@/lib/types";
 import { dayPhrase, longDate, toISODate, upcomingDays, hour12 } from "@/lib/format";
-import { busyness } from "@/lib/busyness";
+import { busyness, BUSYNESS_LEGEND } from "@/lib/busyness";
 import { STATUS_DASHBOARD_URL } from "@/lib/site";
 import { DaySelector } from "./DaySelector";
-import { HourlyStrip } from "./HourlyStrip";
+import { HourlyChart } from "./HourlyChart";
 
 type State =
   | { kind: "loading" }
@@ -58,7 +58,7 @@ export function ForecastView({ onAsk }: { onAsk: (question: string) => void }) {
   useEffect(() => load(selected), [selected, load]);
 
   return (
-    <div className="space-y-4 lg:space-y-6">
+    <div className="space-y-3 lg:space-y-4">
       <DaySelector days={days} selected={selected} onSelect={handleDaySelect} />
 
       {state.kind === "loading" ? (
@@ -106,26 +106,30 @@ function SuggestedQuestions({
   ];
 
   return (
-    <section className="rounded-4xl bg-surface/60 p-5 shadow-soft backdrop-blur lg:p-6">
-      <p className="text-sm font-bold text-ink lg:text-base">Ask about it</p>
-      {/* Wrapping put each question on its own row on a phone -- three stacked bars for
-          a secondary action. Scrolling sideways instead keeps all three but costs one
-          row, reusing the day picker's idiom (and its edge bleed, where -mx-5 cancels
-          the card's p-5) so it reads as a familiar control rather than a new one. */}
-      <div className="no-scrollbar -mx-5 mt-3 flex gap-2 overflow-x-auto px-5 md:mx-0 md:flex-wrap md:overflow-x-visible md:px-0">
-        {questions.map((q, index) => (
-          <button
-            key={q}
-            type="button"
-            onClick={() => {
-              posthog.capture("suggested_question_clicked", { question_index: index });
-              onAsk(q);
-            }}
-            className="shrink-0 whitespace-nowrap rounded-2xl bg-surface-2 px-4 py-2.5 text-left text-sm font-semibold text-ink transition hover:bg-surface md:whitespace-normal lg:text-base"
-          >
-            {q}
-          </button>
-        ))}
+    <section className="rounded-card border border-line bg-surface px-4 py-3.5 lg:px-6 lg:py-4">
+      <div className="flex flex-col gap-2.5 md:flex-row md:items-center md:gap-4">
+        <p className="shrink-0 text-xs font-medium uppercase tracking-wide text-muted">
+          Ask about it
+        </p>
+        {/* Wrapping put each question on its own row on a phone -- three stacked bars for
+            a secondary action. Scrolling sideways instead keeps all three but costs one
+            row, reusing the day picker's idiom (and its edge bleed) so it reads as a
+            familiar control rather than a new one. */}
+        <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 md:mx-0 md:flex-wrap md:overflow-x-visible md:px-0">
+          {questions.map((q, index) => (
+            <button
+              key={q}
+              type="button"
+              onClick={() => {
+                posthog.capture("suggested_question_clicked", { question_index: index });
+                onAsk(q);
+              }}
+              className="shrink-0 whitespace-nowrap rounded border border-line bg-surface-2 px-3 py-1.5 text-left text-sm text-ink-2 transition hover:border-axis hover:text-ink md:whitespace-normal"
+            >
+              {q}
+            </button>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -145,66 +149,77 @@ function ReadyCard({ data }: { data: ForecastResponse }) {
 
   // Desktop puts the summary beside the chart; phone keeps them stacked.
   return (
-    <div className="space-y-4 lg:grid lg:grid-cols-12 lg:items-stretch lg:gap-6 lg:space-y-0">
-      <section className="rounded-4xl bg-surface/80 p-6 shadow-soft backdrop-blur lg:col-span-4 lg:p-8">
+    <div className="space-y-3 lg:grid lg:grid-cols-12 lg:items-stretch lg:gap-4 lg:space-y-0">
+      <section className="rounded-card border border-line bg-surface p-5 lg:col-span-4 lg:p-6">
         {/* Hidden on mobile: the day picker sits directly above with this date already
             selected, so restating it is a third echo on a small screen. Desktop keeps
             it, where the card sits beside the chart and needs its own anchor. */}
-        <p className="hidden font-bold text-ink lg:block lg:text-lg">
-          {longDate(data.day)}
-        </p>
+        <p className="hidden text-sm font-medium text-ink lg:block">{longDate(data.day)}</p>
 
-        {peak && quiet ? (
+        {peak && quiet && peakB ? (
           <>
-            <p className="mt-4 text-sm font-semibold text-muted lg:mt-8">Busiest time</p>
-            <div className="mt-1 flex flex-wrap items-end gap-x-3 gap-y-1 lg:mt-2 lg:block lg:space-y-1">
-              <span
-                className="text-4xl font-extrabold leading-none lg:text-5xl"
-                style={{ color: peakB?.ink }}
-              >
-                {peakB?.label}
+            <p className="text-xs font-medium uppercase tracking-wide text-muted lg:mt-6">
+              Busiest time
+            </p>
+            <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1 lg:mt-2 lg:block">
+              <span className="flex items-center gap-2">
+                {/* The swatch carries the level; the word stays ink. Colouring the text
+                    itself fails contrast at the light end of the ramp and makes the
+                    type read as decoration rather than as a reading. */}
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
+                  style={{ background: peakB.fill }}
+                  aria-hidden="true"
+                />
+                <span className="text-3xl font-semibold leading-none tracking-tight text-ink lg:text-4xl">
+                  {peakB.label}
+                </span>
               </span>
-              <span className="pb-0.5 text-lg font-bold text-ink lg:block lg:pb-0 lg:text-xl">
+              <span className="text-base text-muted lg:mt-1.5 lg:block lg:text-lg">
                 around {hour12(peak.hour)}
               </span>
             </div>
 
             {/* The headline above already answers "when is it busiest", so on a phone
-                the Busiest tile repeats it a few pixels lower -- same hour, same label.
-                Desktop keeps the pair, where they sit beside the chart and read as a
-                summary rather than an echo. The busiest hour's rate is still on the bar
-                chart directly below, so nothing is actually lost on mobile. */}
-            <div className="mt-5 grid grid-cols-1 gap-3 lg:mt-8 lg:grid-cols-2">
+                the Busiest tile repeats it a few pixels lower. Desktop keeps the pair,
+                where they sit beside the chart and read as a summary rather than an
+                echo. */}
+            <div className="mt-4 grid grid-cols-1 divide-y divide-line border-t border-line lg:mt-6 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
               <div className="hidden lg:block">
                 <MiniStat label="Busiest" hour={peak.hour} value={peak.predicted} />
               </div>
               <MiniStat label="Quietest" hour={quiet.hour} value={quiet.predicted} />
             </div>
+
+            <ScaleKey />
           </>
         ) : (
-          <p className="mt-4 text-muted">No open hours to show for this day.</p>
+          <p className="mt-4 text-sm text-muted">No open hours to show for this day.</p>
         )}
       </section>
 
       {preds.length > 0 ? (
-        <section className="flex flex-col rounded-4xl bg-surface/80 p-5 shadow-soft backdrop-blur lg:col-span-8 lg:p-8">
-          <div className="mb-3 flex items-center justify-between lg:mb-6">
-            <h2 className="font-bold text-ink lg:text-lg">Hour by hour</h2>
-            <span className="text-xs font-semibold text-muted lg:text-sm">families arriving</span>
+        <section className="flex flex-col rounded-card border border-line bg-surface p-4 lg:col-span-8 lg:p-6">
+          <div className="mb-4 flex items-baseline justify-between gap-3 lg:mb-6">
+            <h2 className="text-sm font-semibold text-ink">Predicted arrivals by hour</h2>
+            <span className="shrink-0 text-xs text-muted">
+              families/hour
+              {data.basis === "typical" ? " · typical day" : ""}
+            </span>
           </div>
-          <HourlyStrip predictions={preds} />
-          <p className="mt-3 text-xs text-muted lg:mt-6 lg:text-sm">
+          <HourlyChart predictions={preds} />
+          <p className="mt-4 border-t border-line pt-3 text-xs leading-relaxed text-muted">
             {data.basis === "typical"
-              ? "This far out we don’t have live weather yet, so this is a typical day like this one."
-              : "A rough guide from past summers and today’s weather — actual numbers vary."}{" "}
+              ? "No live weather this far ahead, so this is a typical day like this one rather than a real forecast."
+              : "The line through each bar is the model’s typical error for that hour, so a long line means an hour it is less sure about."}{" "}
             {/* The caveat above raises the obvious question -- how full is it *now* --
                 so the answer goes right here rather than in a separate banner. */}
-            Want to know how busy it is right now?{" "}
+            It predicts arrivals, not how full the pool is.{" "}
             <a
               href={STATUS_DASHBOARD_URL}
               target="_blank"
               rel="noreferrer"
-              className="font-semibold text-ink underline"
+              className="text-accent-ink underline underline-offset-2"
               onClick={() => posthog.capture("live_dashboard_link_clicked")}
             >
               See the live dashboard
@@ -217,14 +232,52 @@ function ReadyCard({ data }: { data: ForecastResponse }) {
   );
 }
 
+/**
+ * The busyness ramp, end to end.
+ *
+ * A single-series chart needs no legend -- bar height already carries the magnitude. What
+ * this explains is the *other* thing the page says: the word. "Quiet" beside a swatch is
+ * only meaningful once you can see it is the bottom of a five-step scale, so this is a
+ * scale key rather than a series legend, and it earns its place by naming the two ends
+ * rather than restating what the axis says.
+ *
+ * Desktop only. On a phone it would be a sixth stacked row on a screen the whole point
+ * of which is to answer one question quickly.
+ */
+function ScaleKey() {
+  // Indexed reads are checked under `noUncheckedIndexedAccess`, so the ends are pulled
+  // out and rendered optionally rather than asserted non-null.
+  const quietEnd = BUSYNESS_LEGEND[0];
+  const packedEnd = BUSYNESS_LEGEND[BUSYNESS_LEGEND.length - 1];
+  return (
+    <div className="mt-6 hidden lg:block">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted">Scale</p>
+      <div className="mt-2 flex gap-0.5" aria-hidden="true">
+        {BUSYNESS_LEGEND.map((b) => (
+          <span key={b.level} className="h-1.5 flex-1" style={{ background: b.fill }} />
+        ))}
+      </div>
+      <div className="mt-1.5 flex justify-between text-xs text-muted">
+        <span>{quietEnd?.label}</span>
+        <span>{packedEnd?.label}</span>
+      </div>
+    </div>
+  );
+}
+
 function MiniStat({ label, hour, value }: { label: string; hour: number; value: number }) {
   const b = busyness(value);
   return (
-    <div className="rounded-2xl p-3 lg:p-4" style={{ background: b.soft }}>
-      <p className="text-xs font-semibold text-muted lg:text-sm">{label}</p>
-      <p className="mt-0.5 text-lg font-extrabold text-ink lg:text-xl">{hour12(hour)}</p>
-      <p className="text-sm font-bold" style={{ color: b.ink }}>
-        {b.label} · ~{Math.round(value)}/hr
+    <div className="py-3 lg:px-4 lg:py-3 lg:first:pl-0">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
+      <p className="mt-1 text-lg font-semibold leading-none text-ink">{hour12(hour)}</p>
+      <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted">
+        <span
+          className="h-2 w-2 shrink-0 rounded-[2px]"
+          style={{ background: b.fill }}
+          aria-hidden="true"
+        />
+        {b.label} · <span className="tnum">~{Math.round(value)}/hr</span>
       </p>
     </div>
   );
@@ -232,15 +285,12 @@ function MiniStat({ label, hour, value }: { label: string; hour: number; value: 
 
 function ClosedCard({ day, message }: { day: string; message?: string }) {
   return (
-    <section className="rounded-4xl bg-surface/80 p-8 text-center shadow-soft backdrop-blur lg:py-20">
-      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-surface-2 text-2xl">
-        🌙
-      </div>
-      <h2 className="text-xl font-extrabold text-ink">Closed for the season</h2>
-      <p className="mx-auto mt-2 max-w-xs text-muted">
-        {message ?? "The pool isn’t open on this date."} See you next summer!
+    <section className="rounded-card border border-line bg-surface p-8 text-center lg:py-20">
+      <h2 className="text-lg font-semibold text-ink">Closed for the season</h2>
+      <p className="mx-auto mt-2 max-w-sm text-sm text-muted">
+        {message ?? "The pool isn’t open on this date."} See you next summer.
       </p>
-      <p className="mt-3 text-sm text-muted">{longDate(day)}</p>
+      <p className="mt-3 text-xs text-muted">{longDate(day)}</p>
     </section>
   );
 }
@@ -248,27 +298,27 @@ function ClosedCard({ day, message }: { day: string; message?: string }) {
 function LoadingCard({ slow }: { slow: boolean }) {
   return (
     // Mirrors ReadyCard's grid so nothing jumps when the data lands.
-    <div className="space-y-4 lg:grid lg:grid-cols-12 lg:items-stretch lg:gap-6 lg:space-y-0">
-      <section className="rounded-4xl bg-surface/60 p-6 shadow-soft lg:col-span-4 lg:p-8">
-        <div className="h-4 w-40 animate-pulse rounded-full bg-surface-2" />
-        <div className="mt-4 h-9 w-52 animate-pulse rounded-full bg-surface-2 lg:mt-8 lg:h-12" />
-        <div className="mt-5 grid grid-cols-2 gap-3 lg:mt-8">
-          <div className="h-20 animate-pulse rounded-2xl bg-surface-2 lg:h-24" />
-          <div className="h-20 animate-pulse rounded-2xl bg-surface-2 lg:h-24" />
+    <div className="space-y-3 lg:grid lg:grid-cols-12 lg:items-stretch lg:gap-4 lg:space-y-0">
+      <section className="rounded-card border border-line bg-surface p-5 lg:col-span-4 lg:p-6">
+        <div className="h-4 w-36 animate-pulse rounded bg-surface-2" />
+        <div className="mt-5 h-8 w-44 animate-pulse rounded bg-surface-2 lg:mt-8 lg:h-10" />
+        <div className="mt-6 grid grid-cols-2 gap-4 lg:mt-8">
+          <div className="h-14 animate-pulse rounded bg-surface-2" />
+          <div className="h-14 animate-pulse rounded bg-surface-2" />
         </div>
       </section>
-      <section className="rounded-4xl bg-surface/60 p-5 shadow-soft lg:col-span-8 lg:p-8">
-        <div className="flex h-[112px] items-end gap-2 lg:h-[220px] lg:gap-3">
-          {Array.from({ length: 8 }).map((_, i) => (
+      <section className="rounded-card border border-line bg-surface p-4 lg:col-span-8 lg:p-6">
+        <div className="flex h-[148px] items-end gap-0.5 lg:h-[228px]">
+          {Array.from({ length: 9 }).map((_, i) => (
             <div
               key={i}
-              className="w-7 animate-pulse rounded-full bg-surface-2 md:w-full md:max-w-[3rem] md:flex-1"
-              style={{ height: `${35 + ((i * 13) % 60)}%` }}
+              className="mx-auto w-[58%] max-w-[22px] flex-1 animate-pulse rounded-t bg-surface-2"
+              style={{ height: `${35 + ((i * 13) % 55)}%` }}
             />
           ))}
         </div>
         {slow ? (
-          <p className="mt-4 text-sm text-muted">Waking up the forecast — one moment…</p>
+          <p className="mt-4 text-xs text-muted">Waking the service up — one moment…</p>
         ) : null}
       </section>
     </div>
@@ -278,15 +328,15 @@ function LoadingCard({ slow }: { slow: boolean }) {
 function ErrorCard({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <section
-      className="rounded-4xl bg-surface/80 p-8 text-center shadow-soft backdrop-blur lg:py-20"
+      className="rounded-card border border-line bg-surface p-8 text-center lg:py-20"
       role="alert"
     >
-      <h2 className="text-lg font-extrabold text-ink">Couldn’t load the forecast</h2>
-      <p className="mx-auto mt-1 max-w-xs text-sm text-muted">{message}</p>
+      <h2 className="text-base font-semibold text-ink">Couldn’t load the forecast</h2>
+      <p className="mx-auto mt-1.5 max-w-sm text-sm text-muted">{message}</p>
       <button
         type="button"
         onClick={onRetry}
-        className="mt-4 rounded-full bg-ink px-5 py-2 text-sm font-bold text-surface"
+        className="mt-4 rounded bg-ink px-4 py-2 text-sm font-medium text-surface transition hover:opacity-90"
       >
         Try again
       </button>

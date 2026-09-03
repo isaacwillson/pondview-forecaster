@@ -3,75 +3,104 @@
 @tailwind utilities;
 
 /*
-  "Pool weather": a soft sky gradient, rounded translucent cards, a friendly rounded
-  typeface, and plain-language busyness. Built to be glanceable for a resident, not a
-  data tool. Colour for busyness comes from lib/busyness.ts (quiet blue -> packed coral).
+  Visual language: a restrained instrument.
+
+  The rule that generates everything below is "colour is reserved for data". The
+  interface chrome is neutral grey and near-black ink; the only hue on the page is the
+  blue that encodes how busy an hour is. That is why buttons and the active tab are
+  filled with ink rather than a brand colour -- an accent button competing with the
+  chart teaches the eye that colour means nothing in particular.
+
+  Structure is carried by hairline borders, not drop shadows or translucency. A 1px
+  line is a precise, cheap separator; a blurred card edge is decoration that also
+  costs a compositing layer.
 */
 :root {
-  --sky-top: #bfe3ff;
-  --sky-mid: #e4f4ff;
-  --sky-bot: #f5fbff;
+  /* Surfaces. `plane` is the page, `surface` the cards, `surface-2` the recessed fills
+     (inputs, segmented controls, chips). */
+  --plane: #f4f5f7;
   --surface: #ffffff;
-  --surface-2: #eef6fc;
-  --ink: #102331;
-  --muted: #5c7486;
-  --line: #dceaf4;
-  --sun: #ff9e1b;
-  --shadow: 0 1px 2px rgba(16, 35, 49, 0.05), 0 10px 26px rgba(16, 35, 49, 0.09);
+  --surface-2: #eef0f3;
+
+  /* Ink. Every value here is measured against the surfaces above: the weakest pairing
+     is `muted` on `surface-2` at 4.98:1, clear of the 4.5:1 AA floor for body text.
+     If you darken a surface, re-measure -- do not assume. */
+  --ink: #0f1417;
+  --ink-2: #4c555c;
+  --muted: #5f686f;
+
+  /* Chart chrome and rules. `line` separates blocks, `grid` is the chart's gridlines
+     (one step off the surface, solid, recessive), `axis` is the baseline. */
+  --line: #dfe3e7;
+  --grid: #ebeef1;
+  --axis: #c9cfd5;
+
+  /* The single accent. `accent` is for marks and the focus ring, where 3:1 is the bar;
+     `accent-ink` is the darker step used whenever the colour becomes TEXT, which needs
+     4.5:1 (#2a78d6 measures 4.42:1 on white and would fail). */
+  --accent: #2a78d6;
+  --accent-ink: #1c5cab;
+
+  --shadow: 0 1px 2px rgba(15, 20, 23, 0.04);
   color-scheme: light;
 
   /*
-    Busyness palette (quiet -> packed). Split in two because one colour cannot do both
-    jobs: `-fill` is a large block (the hourly bars) and can stay vivid, while `-ink` is
-    small text and has to meet contrast against the card.
+    Busyness ramp (quiet -> packed).
 
-    The vivid values were tuned on the dark theme and failed badly as text on light --
-    "Busy" measured 1.87:1 against its own tint, where AA wants 4.5:1. Hence a separate
-    darker ink set here and a lighter one under the dark override; every pairing now
-    measures >= 4.69:1. Keep it that way if you retune: check the ink against BOTH the
-    card and its own `-soft` tint, which is the tighter of the two.
+    This is an ORDINAL scale -- the levels have a fixed order, and swapping two of them
+    would change the meaning -- so it is one hue in monotone lightness steps, not five
+    different hues. The previous palette (blue, teal, green, amber, coral) was a rainbow
+    used for magnitude: it spent five hues re-encoding what bar height already showed,
+    and left the reader to memorise which hue outranked which. With a single ramp the
+    order is visible in the colour itself.
 
-    `-soft` is a translucent wash of the fill, so it composites correctly over either
-    theme's card and needs no dark-mode override.
+    Steps are 250/350/450/550/650 of a blue ramp. Validated as an ordinal ramp against
+    #ffffff: monotone lightness, every adjacent gap >= 0.06 L, light end 2.11:1 on the
+    surface, hue spread 3 degrees. Re-run that check before changing any step.
+
+    There is deliberately no text colour here. Labels wear ink and sit beside a small
+    swatch that carries the level -- colouring the text itself both fails contrast at
+    the light end and makes the type look decorative.
   */
-  --busy-quiet: #6ba8dd;
-  --busy-quiet-ink: #1c5c8f;
-  --busy-quiet-soft: rgba(107, 168, 221, 0.16);
-  --busy-easy: #38b8ac;
-  --busy-easy-ink: #0f6b62;
-  --busy-easy-soft: rgba(56, 184, 172, 0.16);
-  --busy-steady: #4cb96a;
-  --busy-steady-ink: #1f7a3c;
-  --busy-steady-soft: rgba(76, 185, 106, 0.16);
-  --busy-busy: #f2a23c;
-  --busy-busy-ink: #8a5200;
-  --busy-busy-soft: rgba(242, 162, 60, 0.18);
-  --busy-packed: #ec5f5f;
-  --busy-packed-ink: #b52d2d;
-  --busy-packed-soft: rgba(236, 95, 95, 0.18);
+  --busy-0: #86b6ef;
+  --busy-1: #5598e7;
+  --busy-2: #2a78d6;
+  --busy-3: #1c5cab;
+  --busy-4: #104281;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --sky-top: #061527;
-    --sky-mid: #0a1e33;
-    --sky-bot: #0c2339;
-    --surface: #12263e;
-    --surface-2: #16305079;
-    --ink: #eaf3fb;
-    --muted: #97b1c7;
-    --line: #22395a;
-    --sun: #ffbb4d;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 30px rgba(0, 0, 0, 0.38);
+    --plane: #0d0f11;
+    --surface: #15181b;
+    --surface-2: #1d2226;
+
+    --ink: #eef1f3;
+    --ink-2: #a9b2b9;
+    --muted: #8b959c;
+
+    --line: #262c31;
+    --grid: #22282d;
+    --axis: #39424a;
+
+    --accent: #3987e5;
+    --accent-ink: #86b6ef;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
     color-scheme: dark;
 
-    /* Only the ink changes: the fills already read well on a dark card, and the soft
-       washes composite fine. "Packed" was the one that fell short here (3.89:1). */
-    --busy-quiet-ink: #8cc0ea;
-    --busy-easy-ink: #5fd3c6;
-    --busy-steady-ink: #6fd189;
-    --busy-busy-ink: #f7b45f;
-    --busy-packed-ink: #ff9090;
+    /*
+      The ramp is re-stepped for the dark surface, not flipped programmatically. On a
+      dark ground "more" has to mean more distance FROM the surface, so the anchor
+      inverts: quiet is the darkest step (nearest the background) and packed the
+      lightest. Validated the same way against #15181b -- dark end 2.20:1, adjacent
+      gaps >= 0.06 L.
+    */
+    --busy-0: #184f95;
+    --busy-1: #256abf;
+    --busy-2: #3987e5;
+    --busy-3: #6da7ec;
+    --busy-4: #9ec5f4;
   }
 }
 
@@ -81,28 +110,32 @@
   }
   body {
     min-height: 100dvh;
-    background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 28%, var(--sky-bot) 60%);
-    background-attachment: fixed;
+    background: var(--plane);
     color: var(--ink);
     font-family: var(--font-sans), system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
+  /* Equal-width digits, for numbers that must line up in a column: axis ticks, table
+     rows, the metric values in the model card. Deliberately NOT applied to large
+     standalone figures -- tabular digits give every glyph the width of a zero, which
+     makes a display-size number look loosely spaced. */
   .tnum {
     font-variant-numeric: tabular-nums;
   }
   ::selection {
-    background: rgba(255, 158, 27, 0.22);
+    background: rgba(42, 120, 214, 0.18);
   }
   :focus-visible {
-    outline: 2px solid var(--sun);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
-    border-radius: 8px;
+    border-radius: 4px;
   }
 }
 
 @layer components {
-  /* Horizontal scroll strips (hourly, days): keep scrollability, hide the bar. */
+  /* Horizontal scroll strips (days, suggested questions): keep scrollability, hide
+     the bar. */
   .no-scrollbar {
     scrollbar-width: none;
     -ms-overflow-style: none;
@@ -111,30 +144,31 @@
     display: none;
   }
 
-  /* What-if temperature slider: a friendly white thumb on a track we draw. */
+  /* What-if temperature slider. The thumb is ink rather than the accent for the same
+     reason the buttons are: the accent belongs to the data. */
   .temp-range {
     -webkit-appearance: none;
     appearance: none;
     width: 100%;
-    height: 36px;
+    height: 32px;
     background: transparent;
     cursor: pointer;
   }
   .temp-range::-webkit-slider-thumb {
     -webkit-appearance: none;
-    height: 26px;
-    width: 26px;
+    height: 18px;
+    width: 18px;
     border-radius: 9999px;
-    background: #fff;
-    border: 3px solid var(--sun);
-    box-shadow: 0 2px 6px rgba(16, 35, 49, 0.28);
+    background: var(--ink);
+    border: 3px solid var(--surface);
+    box-shadow: 0 0 0 1px var(--axis);
   }
   .temp-range::-moz-range-thumb {
-    height: 26px;
-    width: 26px;
+    height: 18px;
+    width: 18px;
     border-radius: 9999px;
-    background: #fff;
-    border: 3px solid var(--sun);
-    box-shadow: 0 2px 6px rgba(16, 35, 49, 0.28);
+    background: var(--ink);
+    border: 3px solid var(--surface);
+    box-shadow: 0 0 0 1px var(--axis);
   }
 }

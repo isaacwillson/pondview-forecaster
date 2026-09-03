@@ -1,14 +1,26 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Nunito } from "next/font/google";
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
 import { PostHogSetup } from "@/components/PostHogSetup";
 
-// A friendly, rounded, highly legible typeface -- approachable for residents.
-const nunito = Nunito({
+// A neutral, tightly-drawn UI sans. It replaced Nunito, whose rounded terminals read as
+// friendly at the cost of reading as a toy -- the wrong signal for a page whose job is
+// to show a model's output and be believed.
+const plexSans = IBM_Plex_Sans({
   subsets: ["latin"],
   variable: "--font-sans",
-  weight: ["400", "500", "600", "700", "800"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+// Reserved for figures, axis ticks and metric values -- anything the reader should
+// treat as a measurement rather than prose. Its digits are monospaced by construction,
+// so columns line up without needing a `tabular-nums` override.
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+  weight: ["400", "500", "600"],
   display: "swap",
 });
 
@@ -18,8 +30,11 @@ const nunito = Nunito({
 const SITE_URL = "https://pondviewforecast.vercel.app";
 
 const TITLE = "Pondview Pool Forecaster";
+// Serves both readers of a shared link: a resident wants to know when to go, and anyone
+// looking at this as a piece of work wants to know there is a real model behind it.
 const DESCRIPTION =
-  "See when Pondview Pool is quiet or busy, hour by hour, predicted from the day's weather.";
+  "See when Pondview Pool is quiet or busy, hour by hour — predicted from the day's " +
+  "weather by a model trained on a season of pool sign-in sheets.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -53,7 +68,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={nunito.variable}>
+    <html lang="en" className={`${plexSans.variable} ${plexMono.variable}`}>
       <body>
         <PostHogSetup />
         {children}

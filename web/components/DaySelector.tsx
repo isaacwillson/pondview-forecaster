@@ -27,14 +27,14 @@ export function DaySelector({
             role="tab"
             aria-selected={active}
             onClick={() => onSelect(d.iso)}
-            className={`flex shrink-0 flex-col items-center rounded-2xl px-4 py-2.5 leading-tight transition md:flex-1 md:px-2 lg:py-3 ${
+            className={`flex shrink-0 flex-col items-center rounded border px-3.5 py-2 leading-tight transition md:flex-1 md:px-2 ${
               active
-                ? "bg-ink text-surface shadow-soft"
-                : "bg-surface/70 text-ink hover:bg-surface"
+                ? "border-ink bg-ink text-surface"
+                : "border-line bg-surface text-ink-2 hover:border-axis hover:text-ink"
             }`}
           >
-            <span className="text-sm font-bold">{d.label}</span>
-            <span className={active ? "text-xs opacity-80" : "text-xs text-muted"}>
+            <span className="text-sm font-medium">{d.label}</span>
+            <span className={`text-xs ${active ? "opacity-70" : "text-muted"}`}>
               {d.sub}
             </span>
           </button>

@@ -21,6 +21,23 @@ export interface ForecastResponse {
   message?: string;
 }
 
+/** What `GET /health` reports about the artifact the service actually loaded. The model
+ *  card reads its figures from here rather than hardcoding them, so a retrain that moves
+ *  the MAE cannot leave a stale number on the page. */
+export interface HealthResponse {
+  status: string;
+  model_features: string[];
+  unit: string;
+  trained_on: {
+    cv_baseline_mae: number;
+    cv_model_mae: number;
+    features: string[];
+    n_days: number;
+    n_observations: number;
+    sklearn_version: string;
+  };
+}
+
 export interface TempRange {
   min: number;
   max: number;

@@ -198,8 +198,8 @@ export function ChatView({
   const empty = messages.length === 0;
 
   return (
-    <div className="space-y-4 lg:space-y-6">
-      <section className="flex flex-col rounded-4xl bg-surface/80 p-5 shadow-soft backdrop-blur lg:p-8">
+    <div className="space-y-3 lg:space-y-4">
+      <section className="flex flex-col rounded-card border border-line bg-surface p-4 lg:p-6">
         <div
           className="min-h-[18rem] space-y-3 lg:min-h-[26rem] lg:space-y-4"
           role="log"
@@ -216,7 +216,7 @@ export function ChatView({
 
           {error ? (
             <p
-              className="rounded-2xl bg-surface-2 px-4 py-3 text-sm font-semibold text-ink"
+              className="rounded border border-line bg-surface-2 px-3 py-2.5 text-sm text-ink"
               role="alert"
             >
               {error}
@@ -228,7 +228,7 @@ export function ChatView({
 
         {exhausted ? (
           <p
-            className="mt-4 rounded-2xl bg-surface-2 px-4 py-3 text-sm font-semibold text-ink lg:mt-6 lg:text-base"
+            className="mt-4 rounded border border-line bg-surface-2 px-3 py-2.5 text-sm text-ink lg:mt-6"
             role="status"
           >
             That&rsquo;s {DAILY_QUESTION_LIMIT} questions today — the daily limit. It
@@ -254,25 +254,26 @@ export function ChatView({
               placeholder="Ask about how busy it'll be…"
               autoComplete="off"
               disabled={pending}
-              className="min-w-0 flex-1 rounded-2xl bg-surface-2 px-4 py-3 text-ink placeholder:text-muted disabled:opacity-60 lg:text-lg"
+              className="min-w-0 flex-1 rounded border border-line bg-surface-2 px-3 py-2.5 text-ink placeholder:text-muted disabled:opacity-60"
             />
             <button
               type="submit"
               disabled={pending || draft.trim().length === 0}
-              className="shrink-0 rounded-2xl bg-ink px-5 py-3 text-sm font-bold text-surface transition disabled:opacity-40 lg:px-7 lg:text-base"
+              className="shrink-0 rounded bg-ink px-5 py-2.5 text-sm font-medium text-surface transition hover:opacity-90 disabled:opacity-40"
             >
               Ask
             </button>
           </form>
         )}
 
-        <p className="mt-3 text-xs text-muted lg:text-sm">
-          Answers cover how many families <strong>arrive</strong> each hour, not how many
-          people are at the pool. It can&rsquo;t see the pool — only predict from weather.
+        <p className="mt-3 max-w-3xl border-t border-line pt-3 text-xs leading-relaxed text-muted">
+          Answers are built by calling the same forecast endpoints this page uses, so every
+          number traces to a model output rather than the assistant&rsquo;s own arithmetic.
+          It covers arrivals per hour — it cannot see the pool.
           {usageReady && !exhausted && remaining <= REMAINING_VISIBLE_AT ? (
             <>
               {" "}
-              <span className="font-semibold text-ink">
+              <span className="font-medium text-ink">
                 {remaining} {remaining === 1 ? "question" : "questions"} left today.
               </span>
             </>
@@ -292,9 +293,10 @@ function Opening({
 }) {
   return (
     <div>
-      <p className="font-bold text-ink lg:text-lg">Ask about the crowd</p>
-      <p className="mt-1 text-sm text-muted lg:text-base">
-        Try one of these, or type your own question.
+      <p className="text-sm font-semibold text-ink">Ask about the crowd</p>
+      <p className="mt-1 text-sm text-muted">
+        Try one of these, or type your own question. The last one is deliberately out of
+        scope — it shows you where the answers stop.
       </p>
       <div className="mt-4 flex flex-wrap gap-2">
         {EXAMPLES.map((q) => (
@@ -303,7 +305,7 @@ function Opening({
             type="button"
             disabled={disabled}
             onClick={() => onPick(q)}
-            className="rounded-2xl bg-surface-2 px-4 py-2.5 text-left text-sm font-semibold text-ink transition hover:bg-surface disabled:opacity-60 lg:text-base"
+            className="rounded border border-line bg-surface-2 px-3 py-1.5 text-left text-sm text-ink-2 transition hover:border-axis hover:text-ink disabled:opacity-60"
           >
             {q}
           </button>
@@ -359,10 +361,8 @@ function Bubble({ role, text }: { role: ChatTurn["role"]; text: string }) {
   return (
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
       <div
-        className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-3 lg:max-w-[75%] lg:text-lg ${
-          isUser
-            ? "bg-ink text-surface"
-            : "bg-surface-2 text-ink"
+        className={`max-w-[85%] whitespace-pre-wrap rounded px-3.5 py-2.5 text-sm leading-relaxed lg:max-w-[75%] ${
+          isUser ? "bg-ink text-surface" : "border border-line bg-surface-2 text-ink"
         }`}
       >
         {isUser ? text : linkify(text)}
@@ -374,7 +374,7 @@ function Bubble({ role, text }: { role: ChatTurn["role"]; text: string }) {
 function Thinking() {
   return (
     <div className="flex justify-start">
-      <div className="flex items-center gap-1.5 rounded-2xl bg-surface-2 px-4 py-3.5">
+      <div className="flex items-center gap-1.5 rounded border border-line bg-surface-2 px-3.5 py-3">
         <span className="sr-only">Working it out…</span>
         {[0, 1, 2].map((i) => (
           <span
